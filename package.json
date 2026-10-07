@@ -9,6 +9,8 @@
     "test": "node --test 'tests/**/*.test.js'",
     "test:db": "scripts/test-db.sh",
     "seed": "node scripts/generar-seed.js",
-    "seed:check": "node scripts/generar-seed.js --check"
+    "seed:check": "node scripts/generar-seed.js --check",
+    "n8n": "node scripts/generar-n8n.js",
+    "n8n:check": "node scripts/generar-n8n.js --check"
   }
 }

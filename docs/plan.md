@@ -10,15 +10,15 @@
 
 ## Etapa 2 — Canal y conversación (n8n)
 
-- Proyecto de Supabase y aplicación de la migración.
-- Webhook de Meta (WhatsApp + Instagram DM + comentarios) con validación de firma.
-- Resolución de tenant, idempotencia y registro de mensajes.
-- Clasificador de intención y agente con `registrar_datos` y `evaluar_calificacion`.
-- Exportar los flujos de n8n a `n8n/` en el repositorio.
+- Proyecto de Supabase (`joylroehptnhelxodhqi`) y aplicación de las migraciones: pendiente.
+- ✅ Webhook de Meta (WhatsApp + Instagram DM + comentarios) con validación de firma.
+- ✅ Resolución de tenant, idempotencia y registro de mensajes.
+- ✅ Clasificador de intención, extracción de datos, evaluación y respuesta.
+- ✅ Flujo en `n8n/`, generado desde `src/` ([n8n.md](n8n.md)). Creado inactivo en n8n; faltan credenciales y secretos.
 
 ## Etapa 3 — Verificación y CRM
 
-- `verificar_direccion` con Google Maps.
+- ✅ `verificar_direccion` con Google Maps (incluida en el flujo de la Etapa 2).
 - ✅ Solicitud de upsert de contactos en GoHighLevel (etiquetas, sin asignar asesor).
 - Campos personalizados en GoHighLevel, cuando se aprueben.
 
@@ -38,6 +38,7 @@
 | Decisión | Fecha | Detalle |
 |---|---|---|
 | Calendario: GoHighLevel nativo | 7 oct 2026 | Ver [gohighlevel.md](gohighlevel.md) |
+| Flujo determinista en lugar de agente con herramientas | 7 oct 2026 | El LLM clasifica, extrae y redacta; los pasos los ejecuta n8n. Ver [n8n.md](n8n.md) |
 
 ## Decisiones pendientes que bloquean etapas
 

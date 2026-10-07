@@ -25,22 +25,21 @@ Meta webhook
         6. Si la conversación no tiene rol → clasificador (prompts/clasificador.md)
              vender → lucia · comprar → sonia · ambigua → plantilla seleccion_intencion (AC 07)
         7. Cargar roles_agente del tenant (prompt, campos, criterios)  (AC 03)
-        8. Agente LLM con herramientas (abajo) hasta producir la respuesta
+        8. Extraer datos, verificar dirección (Lucía), evaluar y redactar la respuesta (abajo)
         9. Enviar respuesta por Meta y guardar en app.mensajes
        10. Ante cualquier falla de proveedor → app.eventos (nivel error) + respuesta segura (AC 46, 47)
 ```
 
-## Herramientas del agente
+## Pasos del turno en n8n
 
-Cada herramienta es un sub-flujo de n8n que recibe siempre `tenant_id`, `contacto_id` y `conversacion_id` desde el contexto del flujo, nunca desde el LLM. El LLM no puede elegir de qué tenant lee o escribe.
+Detalle y configuración en [n8n.md](n8n.md). El LLM no llama herramientas: el flujo ejecuta cada paso y el LLM solo clasifica, extrae datos y redacta. Cada paso es una función de la BD (`supabase/migrations/0002_funciones_n8n.sql`) que recibe `tenant_id` y `conversacion_id` resueltos desde el canal, nunca desde el LLM.
 
-| Herramienta | Roles | Qué hace |
+| Paso | Roles | Qué hace |
 |---|---|---|
-| `registrar_datos` | ambos | Fusiona campos en `contactos.datos`. Solo acepta claves definidas en `roles_agente.campos`. |
-| `verificar_direccion` | solo Lucía | Geocoding de Google Maps → `app.verificaciones_direccion`. La BD rechaza la llamada desde Sonia (AC 20). |
-| `evaluar_calificacion` | ambos | Ejecuta `src/calificacion/evaluar.js` con los criterios del tenant → `app.evaluaciones_calificacion`. Aplica la transición de estado. |
-| `consultar_disponibilidad` | ambos | Consulta el proveedor de calendario activo del tenant. Devuelve solo horarios reales (AC 30). |
-| `reservar_cita` | ambos | Reserva en el proveedor. Solo con respuesta exitosa marca la cita `confirmada` (AC 32). |
+| `app.registrar_datos` | ambos | Fusiona en `contactos.datos` lo que extrajo el LLM. Solo acepta claves y tipos definidos en `roles_agente.campos`. |
+| `app.registrar_verificacion` | solo Lucía | Guarda el resultado de Google Maps en `app.verificaciones_direccion`. La BD rechaza la llamada desde Sonia (AC 20). |
+| `evaluar.js` + `app.guardar_evaluacion` | ambos | Califica con los criterios del tenant, guarda en `app.evaluaciones_calificacion` y aplica la transición de estado. |
+| Consultar disponibilidad y reservar | ambos | Etapa 4: módulo `src/integraciones/gohighlevel.js`, aún no conectado al flujo. |
 
 ### Criterio para clasificar una dirección (Google Maps Geocoding)
 

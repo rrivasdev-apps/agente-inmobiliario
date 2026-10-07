@@ -1,0 +1,1442 @@
+{
+  "name": "Agente inmobiliario: Meta (Lucía y Sonia)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "agente-inmobiliario/meta",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000001",
+      "name": "Meta: verificación (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -400
+      ],
+      "webhookId": "b7c4e2a0-6f1d-4c3e-9a51-2d8f0e6b1c01"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst q = $json.query || {};\nreturn { json: { modo: q['hub.mode'] || '', challenge: q['hub.challenge'] || '', token_b64: b64(String(q['hub.verify_token'] || '')) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000002",
+      "name": "Preparar token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.verificar_token_meta(convert_from(decode('{{ $json.token_b64 }}', 'base64'), 'UTF8')::jsonb #>> '{}') as valido",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000003",
+      "name": "Validar token",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        480,
+        -400
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000004",
+              "leftValue": "={{ $json.valido === true && $('Preparar token').item.json.modo === 'subscribe' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000005",
+      "name": "¿Token válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $('Preparar token').item.json.challenge }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000006",
+      "name": "Responder challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        -480
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Forbidden",
+        "options": {
+          "responseCode": 403
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000007",
+      "name": "Responder 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agente-inmobiliario/meta",
+        "responseMode": "onReceived",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000008",
+      "name": "Meta: eventos (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "b7c4e2a0-6f1d-4c3e-9a51-2d8f0e6b1c02"
+    },
+    {
+      "parameters": {
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst meta = (function () {\n'use strict';\n\n/**\n * Meta (WhatsApp Cloud API e Instagram): normaliza webhooks y arma envíos.\n *\n * Funciones puras que scripts/generar-n8n.js copia en nodos Code del flujo.\n * No usan require ni módulos: el sandbox de n8n Cloud no los permite.\n */\n\nconst GRAPH = 'https://graph.facebook.com/v21.0';\n\n/**\n * Prepara la verificación de X-Hub-Signature-256. La comparación con el App\n * Secret ocurre en Supabase (app.verificar_firma_meta), así el secreto nunca\n * pasa por n8n. Una firma con formato inválido se envía vacía.\n */\nfunction prepararFirma(cuerpoCrudo, cabeceras) {\n  const firma = String((cabeceras || {})['x-hub-signature-256'] || '').toLowerCase();\n  return {\n    cuerpo_b64: Buffer.from(cuerpoCrudo || '').toString('base64'),\n    firma: /^sha256=[0-9a-f]{64}$/.test(firma) ? firma : '',\n  };\n}\n\nfunction textoWhatsApp(m) {\n  switch (m.type) {\n    case 'text': return m.text && m.text.body;\n    case 'button': return m.button && m.button.text;\n    case 'interactive': {\n      const i = m.interactive || {};\n      return (i.button_reply && i.button_reply.title) || (i.list_reply && i.list_reply.title);\n    }\n    default: return null;\n  }\n}\n\n/**\n * Convierte el cuerpo de un webhook de Meta en mensajes normalizados:\n * { tipo_canal, identificador_canal, id_externo, remitente_id, nombre, texto, tipo_mensaje }\n * Ignora estados de entrega, lecturas, ecos de nuestros propios mensajes y\n * objetos no soportados.\n */\nfunction normalizarWebhook(cuerpo) {\n  const salida = [];\n  const entradas = (cuerpo && Array.isArray(cuerpo.entry)) ? cuerpo.entry : [];\n\n  if (cuerpo && cuerpo.object === 'whatsapp_business_account') {\n    for (const entrada of entradas) {\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        if (cambio.field !== 'messages' || !v.metadata) continue;\n        const nombres = new Map((v.contacts || []).map((c) => [c.wa_id, c.profile && c.profile.name]));\n        for (const m of v.messages || []) {\n          salida.push({\n            tipo_canal: 'whatsapp',\n            identificador_canal: v.metadata.phone_number_id,\n            id_externo: m.id,\n            remitente_id: m.from,\n            nombre: nombres.get(m.from) || null,\n            texto: textoWhatsApp(m) || null,\n            tipo_mensaje: m.type,\n          });\n        }\n      }\n    }\n  }\n\n  if (cuerpo && cuerpo.object === 'instagram') {\n    for (const entrada of entradas) {\n      for (const ev of entrada.messaging || []) {\n        const m = ev.message;\n        if (!m || m.is_echo || m.is_deleted || !ev.sender || ev.sender.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_dm',\n          identificador_canal: entrada.id,\n          id_externo: m.mid,\n          remitente_id: ev.sender.id,\n          nombre: null,\n          texto: m.text || null,\n          tipo_mensaje: m.text ? 'text' : 'attachment',\n        });\n      }\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        // Las respuestas de la propia cuenta también llegan como comentarios.\n        if (cambio.field !== 'comments' || !v.id || !v.from || v.from.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_comentario',\n          identificador_canal: entrada.id,\n          id_externo: v.id,\n          remitente_id: v.from.id,\n          nombre: v.from.username || null,\n          texto: v.text || null,\n          tipo_mensaje: 'comment',\n        });\n      }\n    }\n  }\n\n  return salida.filter((m) => m.identificador_canal && m.id_externo && m.remitente_id);\n}\n\n/** Solicitud a la Graph API para responder por el canal de la conversación. */\nfunction solicitudEnvio(ctx, texto) {\n  if (ctx.canal.tipo === 'whatsapp') {\n    return {\n      url: `${GRAPH}/${encodeURIComponent(ctx.canal.identificador_externo)}/messages`,\n      cuerpo: {\n        messaging_product: 'whatsapp',\n        recipient_type: 'individual',\n        to: String(ctx.contacto.telefono || '').replace(/\\D/g, ''),\n        type: 'text',\n        text: { preview_url: false, body: texto },\n      },\n    };\n  }\n  if (ctx.canal.tipo === 'instagram_dm') {\n    return {\n      url: `${GRAPH}/me/messages`,\n      cuerpo: { recipient: { id: ctx.contacto.instagram_id }, message: { text: texto } },\n    };\n  }\n  throw new Error(`Canal sin envío configurado: ${ctx.canal.tipo}`);\n}\n\nfunction solicitudRespuestaComentario(comentarioId, texto) {\n  return { url: `${GRAPH}/${encodeURIComponent(comentarioId)}/replies`, cuerpo: { message: texto } };\n}\n\n/**\n * Interpreta la respuesta del nodo HTTP (con \"continuar ante error\", un fallo\n * llega como { error: {...} }).\n */\nfunction interpretarEnvio(respuesta) {\n  const r = respuesta || {};\n  const id = (Array.isArray(r.messages) && r.messages[0] && r.messages[0].id) || r.message_id || r.id || null;\n  if (r.error || !id) {\n    const e = r.error || {};\n    return {\n      enviado: false,\n      id_externo: null,\n      error: { mensaje: e.message || 'Respuesta sin id de mensaje', codigo: e.code || e.httpCode || null, descripcion: e.description || null },\n    };\n  }\n  return { enviado: true, id_externo: id, error: null };\n}\n\nreturn {\n  prepararFirma,\n  normalizarWebhook,\n  solicitudEnvio,\n  solicitudRespuestaComentario,\n  interpretarEnvio,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst entrada = $input.first();\nlet crudo;\ntry {\n  crudo = await this.helpers.getBinaryDataBuffer(0, 'data');\n} catch (e) {\n  crudo = Buffer.from('');   // sin cuerpo crudo la firma no puede validar\n}\nreturn [{ json: meta.prepararFirma(crudo, entrada.json.headers) }];\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000009",
+      "name": "Preparar firma",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "notes": "La firma se compara en Supabase con el secreto de Vault \"meta_app_secret\".",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.verificar_firma_meta(decode('{{ $json.cuerpo_b64 }}', 'base64'), '{{ $json.firma }}') as valida",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000010",
+      "name": "Verificar firma",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        480,
+        0
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000011",
+              "leftValue": "={{ $json.valida === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000012",
+      "name": "¿Firma válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nthrow new Error('Webhook de Meta con firma inválida o sin secreto configurado en Vault: se descarta.');\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000013",
+      "name": "Rechazar firma inválida",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst meta = (function () {\n'use strict';\n\n/**\n * Meta (WhatsApp Cloud API e Instagram): normaliza webhooks y arma envíos.\n *\n * Funciones puras que scripts/generar-n8n.js copia en nodos Code del flujo.\n * No usan require ni módulos: el sandbox de n8n Cloud no los permite.\n */\n\nconst GRAPH = 'https://graph.facebook.com/v21.0';\n\n/**\n * Prepara la verificación de X-Hub-Signature-256. La comparación con el App\n * Secret ocurre en Supabase (app.verificar_firma_meta), así el secreto nunca\n * pasa por n8n. Una firma con formato inválido se envía vacía.\n */\nfunction prepararFirma(cuerpoCrudo, cabeceras) {\n  const firma = String((cabeceras || {})['x-hub-signature-256'] || '').toLowerCase();\n  return {\n    cuerpo_b64: Buffer.from(cuerpoCrudo || '').toString('base64'),\n    firma: /^sha256=[0-9a-f]{64}$/.test(firma) ? firma : '',\n  };\n}\n\nfunction textoWhatsApp(m) {\n  switch (m.type) {\n    case 'text': return m.text && m.text.body;\n    case 'button': return m.button && m.button.text;\n    case 'interactive': {\n      const i = m.interactive || {};\n      return (i.button_reply && i.button_reply.title) || (i.list_reply && i.list_reply.title);\n    }\n    default: return null;\n  }\n}\n\n/**\n * Convierte el cuerpo de un webhook de Meta en mensajes normalizados:\n * { tipo_canal, identificador_canal, id_externo, remitente_id, nombre, texto, tipo_mensaje }\n * Ignora estados de entrega, lecturas, ecos de nuestros propios mensajes y\n * objetos no soportados.\n */\nfunction normalizarWebhook(cuerpo) {\n  const salida = [];\n  const entradas = (cuerpo && Array.isArray(cuerpo.entry)) ? cuerpo.entry : [];\n\n  if (cuerpo && cuerpo.object === 'whatsapp_business_account') {\n    for (const entrada of entradas) {\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        if (cambio.field !== 'messages' || !v.metadata) continue;\n        const nombres = new Map((v.contacts || []).map((c) => [c.wa_id, c.profile && c.profile.name]));\n        for (const m of v.messages || []) {\n          salida.push({\n            tipo_canal: 'whatsapp',\n            identificador_canal: v.metadata.phone_number_id,\n            id_externo: m.id,\n            remitente_id: m.from,\n            nombre: nombres.get(m.from) || null,\n            texto: textoWhatsApp(m) || null,\n            tipo_mensaje: m.type,\n          });\n        }\n      }\n    }\n  }\n\n  if (cuerpo && cuerpo.object === 'instagram') {\n    for (const entrada of entradas) {\n      for (const ev of entrada.messaging || []) {\n        const m = ev.message;\n        if (!m || m.is_echo || m.is_deleted || !ev.sender || ev.sender.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_dm',\n          identificador_canal: entrada.id,\n          id_externo: m.mid,\n          remitente_id: ev.sender.id,\n          nombre: null,\n          texto: m.text || null,\n          tipo_mensaje: m.text ? 'text' : 'attachment',\n        });\n      }\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        // Las respuestas de la propia cuenta también llegan como comentarios.\n        if (cambio.field !== 'comments' || !v.id || !v.from || v.from.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_comentario',\n          identificador_canal: entrada.id,\n          id_externo: v.id,\n          remitente_id: v.from.id,\n          nombre: v.from.username || null,\n          texto: v.text || null,\n          tipo_mensaje: 'comment',\n        });\n      }\n    }\n  }\n\n  return salida.filter((m) => m.identificador_canal && m.id_externo && m.remitente_id);\n}\n\n/** Solicitud a la Graph API para responder por el canal de la conversación. */\nfunction solicitudEnvio(ctx, texto) {\n  if (ctx.canal.tipo === 'whatsapp') {\n    return {\n      url: `${GRAPH}/${encodeURIComponent(ctx.canal.identificador_externo)}/messages`,\n      cuerpo: {\n        messaging_product: 'whatsapp',\n        recipient_type: 'individual',\n        to: String(ctx.contacto.telefono || '').replace(/\\D/g, ''),\n        type: 'text',\n        text: { preview_url: false, body: texto },\n      },\n    };\n  }\n  if (ctx.canal.tipo === 'instagram_dm') {\n    return {\n      url: `${GRAPH}/me/messages`,\n      cuerpo: { recipient: { id: ctx.contacto.instagram_id }, message: { text: texto } },\n    };\n  }\n  throw new Error(`Canal sin envío configurado: ${ctx.canal.tipo}`);\n}\n\nfunction solicitudRespuestaComentario(comentarioId, texto) {\n  return { url: `${GRAPH}/${encodeURIComponent(comentarioId)}/replies`, cuerpo: { message: texto } };\n}\n\n/**\n * Interpreta la respuesta del nodo HTTP (con \"continuar ante error\", un fallo\n * llega como { error: {...} }).\n */\nfunction interpretarEnvio(respuesta) {\n  const r = respuesta || {};\n  const id = (Array.isArray(r.messages) && r.messages[0] && r.messages[0].id) || r.message_id || r.id || null;\n  if (r.error || !id) {\n    const e = r.error || {};\n    return {\n      enviado: false,\n      id_externo: null,\n      error: { mensaje: e.message || 'Respuesta sin id de mensaje', codigo: e.code || e.httpCode || null, descripcion: e.description || null },\n    };\n  }\n  return { enviado: true, id_externo: id, error: null };\n}\n\nreturn {\n  prepararFirma,\n  normalizarWebhook,\n  solicitudEnvio,\n  solicitudRespuestaComentario,\n  interpretarEnvio,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst cuerpo = $('Meta: eventos (POST)').first().json.body;\nreturn meta.normalizarWebhook(cuerpo).map((m) => ({ json: { ...m, payload_b64: b64(m) } }));\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000014",
+      "name": "Normalizar eventos de Meta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.recibir_mensaje(convert_from(decode('{{ $json.payload_b64 }}', 'base64'), 'UTF8')::jsonb) as r",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000015",
+      "name": "Registrar mensaje entrante",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1200,
+        0
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000016",
+              "leftValue": "={{ $json.r.estado === 'ok' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000017",
+      "name": "¿Mensaje nuevo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000018",
+              "leftValue": "={{ $json.r.estado === 'comentario' && !!$json.r.texto }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000019",
+      "name": "¿Comentario?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst meta = (function () {\n'use strict';\n\n/**\n * Meta (WhatsApp Cloud API e Instagram): normaliza webhooks y arma envíos.\n *\n * Funciones puras que scripts/generar-n8n.js copia en nodos Code del flujo.\n * No usan require ni módulos: el sandbox de n8n Cloud no los permite.\n */\n\nconst GRAPH = 'https://graph.facebook.com/v21.0';\n\n/**\n * Prepara la verificación de X-Hub-Signature-256. La comparación con el App\n * Secret ocurre en Supabase (app.verificar_firma_meta), así el secreto nunca\n * pasa por n8n. Una firma con formato inválido se envía vacía.\n */\nfunction prepararFirma(cuerpoCrudo, cabeceras) {\n  const firma = String((cabeceras || {})['x-hub-signature-256'] || '').toLowerCase();\n  return {\n    cuerpo_b64: Buffer.from(cuerpoCrudo || '').toString('base64'),\n    firma: /^sha256=[0-9a-f]{64}$/.test(firma) ? firma : '',\n  };\n}\n\nfunction textoWhatsApp(m) {\n  switch (m.type) {\n    case 'text': return m.text && m.text.body;\n    case 'button': return m.button && m.button.text;\n    case 'interactive': {\n      const i = m.interactive || {};\n      return (i.button_reply && i.button_reply.title) || (i.list_reply && i.list_reply.title);\n    }\n    default: return null;\n  }\n}\n\n/**\n * Convierte el cuerpo de un webhook de Meta en mensajes normalizados:\n * { tipo_canal, identificador_canal, id_externo, remitente_id, nombre, texto, tipo_mensaje }\n * Ignora estados de entrega, lecturas, ecos de nuestros propios mensajes y\n * objetos no soportados.\n */\nfunction normalizarWebhook(cuerpo) {\n  const salida = [];\n  const entradas = (cuerpo && Array.isArray(cuerpo.entry)) ? cuerpo.entry : [];\n\n  if (cuerpo && cuerpo.object === 'whatsapp_business_account') {\n    for (const entrada of entradas) {\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        if (cambio.field !== 'messages' || !v.metadata) continue;\n        const nombres = new Map((v.contacts || []).map((c) => [c.wa_id, c.profile && c.profile.name]));\n        for (const m of v.messages || []) {\n          salida.push({\n            tipo_canal: 'whatsapp',\n            identificador_canal: v.metadata.phone_number_id,\n            id_externo: m.id,\n            remitente_id: m.from,\n            nombre: nombres.get(m.from) || null,\n            texto: textoWhatsApp(m) || null,\n            tipo_mensaje: m.type,\n          });\n        }\n      }\n    }\n  }\n\n  if (cuerpo && cuerpo.object === 'instagram') {\n    for (const entrada of entradas) {\n      for (const ev of entrada.messaging || []) {\n        const m = ev.message;\n        if (!m || m.is_echo || m.is_deleted || !ev.sender || ev.sender.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_dm',\n          identificador_canal: entrada.id,\n          id_externo: m.mid,\n          remitente_id: ev.sender.id,\n          nombre: null,\n          texto: m.text || null,\n          tipo_mensaje: m.text ? 'text' : 'attachment',\n        });\n      }\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        // Las respuestas de la propia cuenta también llegan como comentarios.\n        if (cambio.field !== 'comments' || !v.id || !v.from || v.from.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_comentario',\n          identificador_canal: entrada.id,\n          id_externo: v.id,\n          remitente_id: v.from.id,\n          nombre: v.from.username || null,\n          texto: v.text || null,\n          tipo_mensaje: 'comment',\n        });\n      }\n    }\n  }\n\n  return salida.filter((m) => m.identificador_canal && m.id_externo && m.remitente_id);\n}\n\n/** Solicitud a la Graph API para responder por el canal de la conversación. */\nfunction solicitudEnvio(ctx, texto) {\n  if (ctx.canal.tipo === 'whatsapp') {\n    return {\n      url: `${GRAPH}/${encodeURIComponent(ctx.canal.identificador_externo)}/messages`,\n      cuerpo: {\n        messaging_product: 'whatsapp',\n        recipient_type: 'individual',\n        to: String(ctx.contacto.telefono || '').replace(/\\D/g, ''),\n        type: 'text',\n        text: { preview_url: false, body: texto },\n      },\n    };\n  }\n  if (ctx.canal.tipo === 'instagram_dm') {\n    return {\n      url: `${GRAPH}/me/messages`,\n      cuerpo: { recipient: { id: ctx.contacto.instagram_id }, message: { text: texto } },\n    };\n  }\n  throw new Error(`Canal sin envío configurado: ${ctx.canal.tipo}`);\n}\n\nfunction solicitudRespuestaComentario(comentarioId, texto) {\n  return { url: `${GRAPH}/${encodeURIComponent(comentarioId)}/replies`, cuerpo: { message: texto } };\n}\n\n/**\n * Interpreta la respuesta del nodo HTTP (con \"continuar ante error\", un fallo\n * llega como { error: {...} }).\n */\nfunction interpretarEnvio(respuesta) {\n  const r = respuesta || {};\n  const id = (Array.isArray(r.messages) && r.messages[0] && r.messages[0].id) || r.message_id || r.id || null;\n  if (r.error || !id) {\n    const e = r.error || {};\n    return {\n      enviado: false,\n      id_externo: null,\n      error: { mensaje: e.message || 'Respuesta sin id de mensaje', codigo: e.code || e.httpCode || null, descripcion: e.description || null },\n    };\n  }\n  return { enviado: true, id_externo: id, error: null };\n}\n\nreturn {\n  prepararFirma,\n  normalizarWebhook,\n  solicitudEnvio,\n  solicitudRespuestaComentario,\n  interpretarEnvio,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nreturn { json: { envio: meta.solicitudRespuestaComentario($json.r.comentario_id, $json.r.texto) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000020",
+      "name": "Preparar respuesta a comentario",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.envio.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.envio.cuerpo) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000021",
+      "name": "Instagram: responder comentario",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2160,
+        240
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "notes": "Credencial Header Auth: Meta Instagram",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000022",
+              "leftValue": "={{ !!$json.r.rol }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000023",
+      "name": "¿Tiene rol?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst conversacion = (function () {\n'use strict';\n\n/**\n * Turno de conversación: solicitudes a OpenAI y decisión de la respuesta.\n *\n * El LLM hace tres cosas acotadas: clasificar la intención, extraer datos y\n * redactar el mensaje. La calificación la decide src/calificacion/evaluar.js\n * y las respuestas sensibles (selección de intención, no calificado,\n * dirección ambigua, agenda) usan plantillas fijas del tenant.\n *\n * `ctx` es el contexto que devuelve app.contexto_conversacion.\n */\n\nconst MODELO_POR_DEFECTO = 'gpt-4.1-mini';\nconst MENSAJES_EN_CONTEXTO = 20;\nconst NOMBRE_CANAL = { whatsapp: 'WhatsApp', instagram_dm: 'Instagram', facebook_messenger: 'Messenger' };\n\n// AC 46: respuesta segura cuando el LLM falla.\nconst RESPUESTA_SEGURA = 'Gracias por tu mensaje. Tuvimos un inconveniente técnico; en breve continuamos la conversación por este medio.';\n\nfunction modelo(ctx) {\n  const m = ctx.integraciones && ctx.integraciones.llm && ctx.integraciones.llm.modelo;\n  return m && !String(m).startsWith('PENDIENTE') ? m : MODELO_POR_DEFECTO;\n}\n\nfunction rellenar(texto, valores) {\n  return String(texto).replace(/\\{\\{(\\w+)\\}\\}/g, (todo, clave) => (valores[clave] !== undefined ? valores[clave] : todo));\n}\n\nfunction mensajesHistorial(ctx) {\n  return (ctx.historial || [])\n    .slice(-MENSAJES_EN_CONTEXTO)\n    .map((m) => ({ role: m.direccion === 'entrante' ? 'user' : 'assistant', content: m.contenido }));\n}\n\nfunction evento(nivel, proveedor, operacion, mensaje, contexto) {\n  return { nivel, proveedor, operacion, mensaje, contexto: contexto || {} };\n}\n\n/** Contenido del primer choice o un error legible. */\nfunction contenidoOpenAI(respuesta) {\n  const r = respuesta || {};\n  if (r.error) return { error: r.error.message || JSON.stringify(r.error) };\n  const c = r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content;\n  if (typeof c !== 'string' || !c.trim()) return { error: 'Respuesta de OpenAI sin contenido' };\n  return { contenido: c.trim() };\n}\n\nfunction jsonOpenAI(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) return r;\n  try {\n    return { json: JSON.parse(r.contenido) };\n  } catch (e) {\n    return { error: `JSON inválido de OpenAI: ${r.contenido.slice(0, 200)}` };\n  }\n}\n\n// --- Clasificación de intención (AC 06, AC 07) --------------------------------\n\nfunction solicitudClasificacion(ctx, promptClasificador) {\n  const recientes = (ctx.historial || []).filter((m) => m.direccion === 'entrante').slice(-3).map((m) => m.contenido);\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: promptClasificador },\n      { role: 'user', content: recientes.join('\\n') },\n    ],\n  };\n}\n\nfunction interpretarClasificacion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    return { intencion: 'ambigua', eventos: [evento('error', 'openai', 'clasificar_intencion', r.error)] };\n  }\n  const { intencion, confianza } = r.json || {};\n  const valida = ['vender', 'comprar'].includes(intencion) && Number(confianza) >= 0.7;\n  return { intencion: valida ? intencion : 'ambigua', eventos: [] };\n}\n\n// --- Extracción de datos ----------------------------------------------------------\n\nfunction describirCampo(c) {\n  const tipo = c.tipo === 'opcion' ? `una de: ${c.opciones.join(', ')}`\n    : c.tipo === 'booleano' ? 'true o false'\n      : c.tipo === 'numero' ? 'número sin separadores ni unidades'\n        : 'texto';\n  return `- ${c.clave} (${tipo}): ${c.etiqueta}${c.descripcion ? `. ${c.descripcion}` : ''}`;\n}\n\nfunction solicitudExtraccion(ctx) {\n  const sistema = [\n    'Extraes datos de una conversación inmobiliaria. No conversas.',\n    'Devuelve solo JSON con la forma {\"datos\": {...}}.',\n    'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',\n    'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',\n    'Campos:',\n    ...ctx.rol.campos.map(describirCampo),\n    '',\n    `Datos ya registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n  ].join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [{ role: 'system', content: sistema }, ...mensajesHistorial(ctx)],\n  };\n}\n\nfunction interpretarExtraccion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    // Sin extracción el turno continúa con los datos que ya había (AC 46).\n    return { datos: {}, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };\n  }\n  const datos = r.json && typeof r.json.datos === 'object' && !Array.isArray(r.json.datos) ? r.json.datos : {};\n  return { datos, eventos: [] };\n}\n\n// --- Evaluación ----------------------------------------------------------------------\n\n/** Ejecuta el evaluador determinista con la configuración del rol. */\nfunction evaluarTurno(ctx, evaluarCalificacion) {\n  try {\n    return {\n      evaluacion: evaluarCalificacion({\n        criterios: ctx.rol.criterios,\n        requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,\n        datos: ctx.contacto.datos,\n        verificacionDireccion: ctx.verificacion,\n      }),\n      eventos: [],\n    };\n  } catch (e) {\n    // Configuración inválida: no se califica ni se descarta a nadie.\n    return {\n      evaluacion: { resultado: 'informacion_incompleta', accion: 'solicitar_datos', campos_faltantes: [], reglas: [], motivo: e.message, codigo_motivo: 'error_configuracion' },\n      eventos: [evento('error', null, 'evaluar_calificacion', e.message)],\n    };\n  }\n}\n\n// --- Respuesta ----------------------------------------------------------------------\n\nconst PLANTILLA_POR_ACCION = {\n  archivar: 'no_calificado',\n  aclarar_direccion: 'direccion_ambigua',\n  // Etapa 4: mientras el calendario no esté conectado, el contacto calificado\n  // queda registrado y el equipo agenda manualmente (ver evento).\n  ofrecer_agenda: 'falla_agenda',\n};\n\nfunction instruccionSiguientePaso(ctx, ev) {\n  const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));\n  switch (ev.accion) {\n    case 'solicitar_datos': {\n      const siguiente = (ev.campos_faltantes || [])[0];\n      return siguiente\n        ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`\n        : 'Pide la información que falte para continuar.';\n    }\n    case 'verificar_direccion':\n      return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';\n    case 'reintentar_verificacion':\n      return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';\n    default:\n      return 'Continúa la conversación según tus reglas.';\n  }\n}\n\nfunction solicitudRedaccion(ctx) {\n  const ev = ctx.evaluacion || {};\n  const sistema = rellenar(ctx.rol.prompt_sistema, {\n    nombre_tenant: ctx.tenant.nombre,\n    canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,\n  });\n  const estado = [\n    '## Estado de la conversación (lo calcula el sistema)',\n    'El sistema ya registró los datos y evaluó la calificación en este turno; tú solo redactas el siguiente mensaje.',\n    `- Ya te presentaste como asistente virtual: ${ctx.conversacion.identificado_como_virtual ? 'sí' : 'no'}.`,\n    ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio\n      ? null\n      : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: \"${ctx.plantillas.inicio}\"`,\n    `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n    `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,\n    `- Siguiente paso: ${instruccionSiguientePaso(ctx, ev)}`,\n    'Responde solo con el texto del mensaje para la persona, sin comillas ni explicaciones.',\n  ].filter(Boolean).join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0.4,\n    messages: [{ role: 'system', content: `${sistema}\\n\\n${estado}` }, ...mensajesHistorial(ctx)],\n  };\n}\n\n/**\n * Decide la respuesta del turno.\n * @returns {{ respuesta_fija: {texto, plantilla} | null, solicitud_llm: object | null, eventos: object[] }}\n */\nfunction planificarRespuesta(ctx) {\n  const p = ctx.plantillas || {};\n  const fija = (clave, eventos = []) => ({ respuesta_fija: { texto: p[clave], plantilla: clave }, solicitud_llm: null, eventos });\n\n  if (!ctx.rol) {\n    if (p.seleccion_intencion) return fija('seleccion_intencion');\n    return { respuesta_fija: { texto: RESPUESTA_SEGURA, plantilla: null }, solicitud_llm: null, eventos: [evento('error', null, 'planificar_respuesta', 'Falta la plantilla seleccion_intencion')] };\n  }\n\n  const ev = ctx.evaluacion || {};\n  const clave = PLANTILLA_POR_ACCION[ev.accion];\n  if (clave && p[clave]) {\n    const eventos = ev.accion === 'ofrecer_agenda'\n      ? [evento('advertencia', null, 'agendamiento', 'Contacto calificado: el calendario aún no está conectado al flujo; agendar manualmente', { contacto_id: ctx.contacto.id })]\n      : [];\n    return fija(clave, eventos);\n  }\n  return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };\n}\n\nfunction interpretarRedaccion(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) {\n    return { texto: RESPUESTA_SEGURA, plantilla: null, eventos: [evento('error', 'openai', 'redactar_respuesta', r.error)] };\n  }\n  return { texto: r.contenido.replace(/^\"(.*)\"$/s, '$1'), plantilla: null, eventos: [] };\n}\n\nreturn {\n  RESPUESTA_SEGURA,\n  rellenar,\n  solicitudClasificacion,\n  interpretarClasificacion,\n  solicitudExtraccion,\n  interpretarExtraccion,\n  evaluarTurno,\n  planificarRespuesta,\n  interpretarRedaccion,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst PROMPT_CLASIFICADOR = \"Clasifica la intención del último mensaje del contacto en una conversación inmobiliaria.\\n\\nResponde solo con JSON: {\\\"intencion\\\": \\\"vender\\\" | \\\"comprar\\\" | \\\"ambigua\\\", \\\"confianza\\\": 0-1}\\n\\n- \\\"vender\\\": tiene, representa o conoce un inmueble que podría ponerse en venta.\\n- \\\"comprar\\\": busca adquirir un inmueble o pregunta por uno publicado.\\n- \\\"ambigua\\\": saludo genérico, arriendo, consultas no relacionadas o señales de ambos.\\n\\nSi la confianza es menor que 0.7, responde \\\"ambigua\\\".\";\nreturn { json: { r: $json.r, solicitud: conversacion.solicitudClasificacion($json.r, PROMPT_CLASIFICADOR) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000024",
+      "name": "Preparar clasificación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.solicitud) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000025",
+      "name": "OpenAI: clasificar intención",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2160,
+        -320
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "notes": "Credencial: OpenAI",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst conversacion = (function () {\n'use strict';\n\n/**\n * Turno de conversación: solicitudes a OpenAI y decisión de la respuesta.\n *\n * El LLM hace tres cosas acotadas: clasificar la intención, extraer datos y\n * redactar el mensaje. La calificación la decide src/calificacion/evaluar.js\n * y las respuestas sensibles (selección de intención, no calificado,\n * dirección ambigua, agenda) usan plantillas fijas del tenant.\n *\n * `ctx` es el contexto que devuelve app.contexto_conversacion.\n */\n\nconst MODELO_POR_DEFECTO = 'gpt-4.1-mini';\nconst MENSAJES_EN_CONTEXTO = 20;\nconst NOMBRE_CANAL = { whatsapp: 'WhatsApp', instagram_dm: 'Instagram', facebook_messenger: 'Messenger' };\n\n// AC 46: respuesta segura cuando el LLM falla.\nconst RESPUESTA_SEGURA = 'Gracias por tu mensaje. Tuvimos un inconveniente técnico; en breve continuamos la conversación por este medio.';\n\nfunction modelo(ctx) {\n  const m = ctx.integraciones && ctx.integraciones.llm && ctx.integraciones.llm.modelo;\n  return m && !String(m).startsWith('PENDIENTE') ? m : MODELO_POR_DEFECTO;\n}\n\nfunction rellenar(texto, valores) {\n  return String(texto).replace(/\\{\\{(\\w+)\\}\\}/g, (todo, clave) => (valores[clave] !== undefined ? valores[clave] : todo));\n}\n\nfunction mensajesHistorial(ctx) {\n  return (ctx.historial || [])\n    .slice(-MENSAJES_EN_CONTEXTO)\n    .map((m) => ({ role: m.direccion === 'entrante' ? 'user' : 'assistant', content: m.contenido }));\n}\n\nfunction evento(nivel, proveedor, operacion, mensaje, contexto) {\n  return { nivel, proveedor, operacion, mensaje, contexto: contexto || {} };\n}\n\n/** Contenido del primer choice o un error legible. */\nfunction contenidoOpenAI(respuesta) {\n  const r = respuesta || {};\n  if (r.error) return { error: r.error.message || JSON.stringify(r.error) };\n  const c = r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content;\n  if (typeof c !== 'string' || !c.trim()) return { error: 'Respuesta de OpenAI sin contenido' };\n  return { contenido: c.trim() };\n}\n\nfunction jsonOpenAI(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) return r;\n  try {\n    return { json: JSON.parse(r.contenido) };\n  } catch (e) {\n    return { error: `JSON inválido de OpenAI: ${r.contenido.slice(0, 200)}` };\n  }\n}\n\n// --- Clasificación de intención (AC 06, AC 07) --------------------------------\n\nfunction solicitudClasificacion(ctx, promptClasificador) {\n  const recientes = (ctx.historial || []).filter((m) => m.direccion === 'entrante').slice(-3).map((m) => m.contenido);\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: promptClasificador },\n      { role: 'user', content: recientes.join('\\n') },\n    ],\n  };\n}\n\nfunction interpretarClasificacion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    return { intencion: 'ambigua', eventos: [evento('error', 'openai', 'clasificar_intencion', r.error)] };\n  }\n  const { intencion, confianza } = r.json || {};\n  const valida = ['vender', 'comprar'].includes(intencion) && Number(confianza) >= 0.7;\n  return { intencion: valida ? intencion : 'ambigua', eventos: [] };\n}\n\n// --- Extracción de datos ----------------------------------------------------------\n\nfunction describirCampo(c) {\n  const tipo = c.tipo === 'opcion' ? `una de: ${c.opciones.join(', ')}`\n    : c.tipo === 'booleano' ? 'true o false'\n      : c.tipo === 'numero' ? 'número sin separadores ni unidades'\n        : 'texto';\n  return `- ${c.clave} (${tipo}): ${c.etiqueta}${c.descripcion ? `. ${c.descripcion}` : ''}`;\n}\n\nfunction solicitudExtraccion(ctx) {\n  const sistema = [\n    'Extraes datos de una conversación inmobiliaria. No conversas.',\n    'Devuelve solo JSON con la forma {\"datos\": {...}}.',\n    'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',\n    'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',\n    'Campos:',\n    ...ctx.rol.campos.map(describirCampo),\n    '',\n    `Datos ya registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n  ].join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [{ role: 'system', content: sistema }, ...mensajesHistorial(ctx)],\n  };\n}\n\nfunction interpretarExtraccion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    // Sin extracción el turno continúa con los datos que ya había (AC 46).\n    return { datos: {}, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };\n  }\n  const datos = r.json && typeof r.json.datos === 'object' && !Array.isArray(r.json.datos) ? r.json.datos : {};\n  return { datos, eventos: [] };\n}\n\n// --- Evaluación ----------------------------------------------------------------------\n\n/** Ejecuta el evaluador determinista con la configuración del rol. */\nfunction evaluarTurno(ctx, evaluarCalificacion) {\n  try {\n    return {\n      evaluacion: evaluarCalificacion({\n        criterios: ctx.rol.criterios,\n        requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,\n        datos: ctx.contacto.datos,\n        verificacionDireccion: ctx.verificacion,\n      }),\n      eventos: [],\n    };\n  } catch (e) {\n    // Configuración inválida: no se califica ni se descarta a nadie.\n    return {\n      evaluacion: { resultado: 'informacion_incompleta', accion: 'solicitar_datos', campos_faltantes: [], reglas: [], motivo: e.message, codigo_motivo: 'error_configuracion' },\n      eventos: [evento('error', null, 'evaluar_calificacion', e.message)],\n    };\n  }\n}\n\n// --- Respuesta ----------------------------------------------------------------------\n\nconst PLANTILLA_POR_ACCION = {\n  archivar: 'no_calificado',\n  aclarar_direccion: 'direccion_ambigua',\n  // Etapa 4: mientras el calendario no esté conectado, el contacto calificado\n  // queda registrado y el equipo agenda manualmente (ver evento).\n  ofrecer_agenda: 'falla_agenda',\n};\n\nfunction instruccionSiguientePaso(ctx, ev) {\n  const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));\n  switch (ev.accion) {\n    case 'solicitar_datos': {\n      const siguiente = (ev.campos_faltantes || [])[0];\n      return siguiente\n        ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`\n        : 'Pide la información que falte para continuar.';\n    }\n    case 'verificar_direccion':\n      return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';\n    case 'reintentar_verificacion':\n      return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';\n    default:\n      return 'Continúa la conversación según tus reglas.';\n  }\n}\n\nfunction solicitudRedaccion(ctx) {\n  const ev = ctx.evaluacion || {};\n  const sistema = rellenar(ctx.rol.prompt_sistema, {\n    nombre_tenant: ctx.tenant.nombre,\n    canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,\n  });\n  const estado = [\n    '## Estado de la conversación (lo calcula el sistema)',\n    'El sistema ya registró los datos y evaluó la calificación en este turno; tú solo redactas el siguiente mensaje.',\n    `- Ya te presentaste como asistente virtual: ${ctx.conversacion.identificado_como_virtual ? 'sí' : 'no'}.`,\n    ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio\n      ? null\n      : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: \"${ctx.plantillas.inicio}\"`,\n    `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n    `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,\n    `- Siguiente paso: ${instruccionSiguientePaso(ctx, ev)}`,\n    'Responde solo con el texto del mensaje para la persona, sin comillas ni explicaciones.',\n  ].filter(Boolean).join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0.4,\n    messages: [{ role: 'system', content: `${sistema}\\n\\n${estado}` }, ...mensajesHistorial(ctx)],\n  };\n}\n\n/**\n * Decide la respuesta del turno.\n * @returns {{ respuesta_fija: {texto, plantilla} | null, solicitud_llm: object | null, eventos: object[] }}\n */\nfunction planificarRespuesta(ctx) {\n  const p = ctx.plantillas || {};\n  const fija = (clave, eventos = []) => ({ respuesta_fija: { texto: p[clave], plantilla: clave }, solicitud_llm: null, eventos });\n\n  if (!ctx.rol) {\n    if (p.seleccion_intencion) return fija('seleccion_intencion');\n    return { respuesta_fija: { texto: RESPUESTA_SEGURA, plantilla: null }, solicitud_llm: null, eventos: [evento('error', null, 'planificar_respuesta', 'Falta la plantilla seleccion_intencion')] };\n  }\n\n  const ev = ctx.evaluacion || {};\n  const clave = PLANTILLA_POR_ACCION[ev.accion];\n  if (clave && p[clave]) {\n    const eventos = ev.accion === 'ofrecer_agenda'\n      ? [evento('advertencia', null, 'agendamiento', 'Contacto calificado: el calendario aún no está conectado al flujo; agendar manualmente', { contacto_id: ctx.contacto.id })]\n      : [];\n    return fija(clave, eventos);\n  }\n  return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };\n}\n\nfunction interpretarRedaccion(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) {\n    return { texto: RESPUESTA_SEGURA, plantilla: null, eventos: [evento('error', 'openai', 'redactar_respuesta', r.error)] };\n  }\n  return { texto: r.contenido.replace(/^\"(.*)\"$/s, '$1'), plantilla: null, eventos: [] };\n}\n\nreturn {\n  RESPUESTA_SEGURA,\n  rellenar,\n  solicitudClasificacion,\n  interpretarClasificacion,\n  solicitudExtraccion,\n  interpretarExtraccion,\n  evaluarTurno,\n  planificarRespuesta,\n  interpretarRedaccion,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst r = $('Preparar clasificación').item.json.r;\nreturn { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64(conversacion.interpretarClasificacion($json)) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000026",
+      "name": "Interpretar intención",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.asignar_rol('{{ $json.t }}'::uuid, '{{ $json.c }}'::uuid, convert_from(decode('{{ $json.payload_b64 }}', 'base64'), 'UTF8')::jsonb) as r",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000027",
+      "name": "Asignar rol",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2640,
+        -320
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000028",
+              "leftValue": "={{ !!$json.r.rol }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000029",
+      "name": "¿Rol asignado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        -320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst conversacion = (function () {\n'use strict';\n\n/**\n * Turno de conversación: solicitudes a OpenAI y decisión de la respuesta.\n *\n * El LLM hace tres cosas acotadas: clasificar la intención, extraer datos y\n * redactar el mensaje. La calificación la decide src/calificacion/evaluar.js\n * y las respuestas sensibles (selección de intención, no calificado,\n * dirección ambigua, agenda) usan plantillas fijas del tenant.\n *\n * `ctx` es el contexto que devuelve app.contexto_conversacion.\n */\n\nconst MODELO_POR_DEFECTO = 'gpt-4.1-mini';\nconst MENSAJES_EN_CONTEXTO = 20;\nconst NOMBRE_CANAL = { whatsapp: 'WhatsApp', instagram_dm: 'Instagram', facebook_messenger: 'Messenger' };\n\n// AC 46: respuesta segura cuando el LLM falla.\nconst RESPUESTA_SEGURA = 'Gracias por tu mensaje. Tuvimos un inconveniente técnico; en breve continuamos la conversación por este medio.';\n\nfunction modelo(ctx) {\n  const m = ctx.integraciones && ctx.integraciones.llm && ctx.integraciones.llm.modelo;\n  return m && !String(m).startsWith('PENDIENTE') ? m : MODELO_POR_DEFECTO;\n}\n\nfunction rellenar(texto, valores) {\n  return String(texto).replace(/\\{\\{(\\w+)\\}\\}/g, (todo, clave) => (valores[clave] !== undefined ? valores[clave] : todo));\n}\n\nfunction mensajesHistorial(ctx) {\n  return (ctx.historial || [])\n    .slice(-MENSAJES_EN_CONTEXTO)\n    .map((m) => ({ role: m.direccion === 'entrante' ? 'user' : 'assistant', content: m.contenido }));\n}\n\nfunction evento(nivel, proveedor, operacion, mensaje, contexto) {\n  return { nivel, proveedor, operacion, mensaje, contexto: contexto || {} };\n}\n\n/** Contenido del primer choice o un error legible. */\nfunction contenidoOpenAI(respuesta) {\n  const r = respuesta || {};\n  if (r.error) return { error: r.error.message || JSON.stringify(r.error) };\n  const c = r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content;\n  if (typeof c !== 'string' || !c.trim()) return { error: 'Respuesta de OpenAI sin contenido' };\n  return { contenido: c.trim() };\n}\n\nfunction jsonOpenAI(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) return r;\n  try {\n    return { json: JSON.parse(r.contenido) };\n  } catch (e) {\n    return { error: `JSON inválido de OpenAI: ${r.contenido.slice(0, 200)}` };\n  }\n}\n\n// --- Clasificación de intención (AC 06, AC 07) --------------------------------\n\nfunction solicitudClasificacion(ctx, promptClasificador) {\n  const recientes = (ctx.historial || []).filter((m) => m.direccion === 'entrante').slice(-3).map((m) => m.contenido);\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: promptClasificador },\n      { role: 'user', content: recientes.join('\\n') },\n    ],\n  };\n}\n\nfunction interpretarClasificacion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    return { intencion: 'ambigua', eventos: [evento('error', 'openai', 'clasificar_intencion', r.error)] };\n  }\n  const { intencion, confianza } = r.json || {};\n  const valida = ['vender', 'comprar'].includes(intencion) && Number(confianza) >= 0.7;\n  return { intencion: valida ? intencion : 'ambigua', eventos: [] };\n}\n\n// --- Extracción de datos ----------------------------------------------------------\n\nfunction describirCampo(c) {\n  const tipo = c.tipo === 'opcion' ? `una de: ${c.opciones.join(', ')}`\n    : c.tipo === 'booleano' ? 'true o false'\n      : c.tipo === 'numero' ? 'número sin separadores ni unidades'\n        : 'texto';\n  return `- ${c.clave} (${tipo}): ${c.etiqueta}${c.descripcion ? `. ${c.descripcion}` : ''}`;\n}\n\nfunction solicitudExtraccion(ctx) {\n  const sistema = [\n    'Extraes datos de una conversación inmobiliaria. No conversas.',\n    'Devuelve solo JSON con la forma {\"datos\": {...}}.',\n    'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',\n    'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',\n    'Campos:',\n    ...ctx.rol.campos.map(describirCampo),\n    '',\n    `Datos ya registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n  ].join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [{ role: 'system', content: sistema }, ...mensajesHistorial(ctx)],\n  };\n}\n\nfunction interpretarExtraccion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    // Sin extracción el turno continúa con los datos que ya había (AC 46).\n    return { datos: {}, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };\n  }\n  const datos = r.json && typeof r.json.datos === 'object' && !Array.isArray(r.json.datos) ? r.json.datos : {};\n  return { datos, eventos: [] };\n}\n\n// --- Evaluación ----------------------------------------------------------------------\n\n/** Ejecuta el evaluador determinista con la configuración del rol. */\nfunction evaluarTurno(ctx, evaluarCalificacion) {\n  try {\n    return {\n      evaluacion: evaluarCalificacion({\n        criterios: ctx.rol.criterios,\n        requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,\n        datos: ctx.contacto.datos,\n        verificacionDireccion: ctx.verificacion,\n      }),\n      eventos: [],\n    };\n  } catch (e) {\n    // Configuración inválida: no se califica ni se descarta a nadie.\n    return {\n      evaluacion: { resultado: 'informacion_incompleta', accion: 'solicitar_datos', campos_faltantes: [], reglas: [], motivo: e.message, codigo_motivo: 'error_configuracion' },\n      eventos: [evento('error', null, 'evaluar_calificacion', e.message)],\n    };\n  }\n}\n\n// --- Respuesta ----------------------------------------------------------------------\n\nconst PLANTILLA_POR_ACCION = {\n  archivar: 'no_calificado',\n  aclarar_direccion: 'direccion_ambigua',\n  // Etapa 4: mientras el calendario no esté conectado, el contacto calificado\n  // queda registrado y el equipo agenda manualmente (ver evento).\n  ofrecer_agenda: 'falla_agenda',\n};\n\nfunction instruccionSiguientePaso(ctx, ev) {\n  const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));\n  switch (ev.accion) {\n    case 'solicitar_datos': {\n      const siguiente = (ev.campos_faltantes || [])[0];\n      return siguiente\n        ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`\n        : 'Pide la información que falte para continuar.';\n    }\n    case 'verificar_direccion':\n      return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';\n    case 'reintentar_verificacion':\n      return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';\n    default:\n      return 'Continúa la conversación según tus reglas.';\n  }\n}\n\nfunction solicitudRedaccion(ctx) {\n  const ev = ctx.evaluacion || {};\n  const sistema = rellenar(ctx.rol.prompt_sistema, {\n    nombre_tenant: ctx.tenant.nombre,\n    canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,\n  });\n  const estado = [\n    '## Estado de la conversación (lo calcula el sistema)',\n    'El sistema ya registró los datos y evaluó la calificación en este turno; tú solo redactas el siguiente mensaje.',\n    `- Ya te presentaste como asistente virtual: ${ctx.conversacion.identificado_como_virtual ? 'sí' : 'no'}.`,\n    ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio\n      ? null\n      : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: \"${ctx.plantillas.inicio}\"`,\n    `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n    `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,\n    `- Siguiente paso: ${instruccionSiguientePaso(ctx, ev)}`,\n    'Responde solo con el texto del mensaje para la persona, sin comillas ni explicaciones.',\n  ].filter(Boolean).join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0.4,\n    messages: [{ role: 'system', content: `${sistema}\\n\\n${estado}` }, ...mensajesHistorial(ctx)],\n  };\n}\n\n/**\n * Decide la respuesta del turno.\n * @returns {{ respuesta_fija: {texto, plantilla} | null, solicitud_llm: object | null, eventos: object[] }}\n */\nfunction planificarRespuesta(ctx) {\n  const p = ctx.plantillas || {};\n  const fija = (clave, eventos = []) => ({ respuesta_fija: { texto: p[clave], plantilla: clave }, solicitud_llm: null, eventos });\n\n  if (!ctx.rol) {\n    if (p.seleccion_intencion) return fija('seleccion_intencion');\n    return { respuesta_fija: { texto: RESPUESTA_SEGURA, plantilla: null }, solicitud_llm: null, eventos: [evento('error', null, 'planificar_respuesta', 'Falta la plantilla seleccion_intencion')] };\n  }\n\n  const ev = ctx.evaluacion || {};\n  const clave = PLANTILLA_POR_ACCION[ev.accion];\n  if (clave && p[clave]) {\n    const eventos = ev.accion === 'ofrecer_agenda'\n      ? [evento('advertencia', null, 'agendamiento', 'Contacto calificado: el calendario aún no está conectado al flujo; agendar manualmente', { contacto_id: ctx.contacto.id })]\n      : [];\n    return fija(clave, eventos);\n  }\n  return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };\n}\n\nfunction interpretarRedaccion(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) {\n    return { texto: RESPUESTA_SEGURA, plantilla: null, eventos: [evento('error', 'openai', 'redactar_respuesta', r.error)] };\n  }\n  return { texto: r.contenido.replace(/^\"(.*)\"$/s, '$1'), plantilla: null, eventos: [] };\n}\n\nreturn {\n  RESPUESTA_SEGURA,\n  rellenar,\n  solicitudClasificacion,\n  interpretarClasificacion,\n  solicitudExtraccion,\n  interpretarExtraccion,\n  evaluarTurno,\n  planificarRespuesta,\n  interpretarRedaccion,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nreturn { json: { r: $json.r, solicitud: conversacion.solicitudExtraccion($json.r) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000030",
+      "name": "Preparar extracción",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.solicitud) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000031",
+      "name": "OpenAI: extraer datos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3360,
+        -80
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "notes": "Credencial: OpenAI",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst conversacion = (function () {\n'use strict';\n\n/**\n * Turno de conversación: solicitudes a OpenAI y decisión de la respuesta.\n *\n * El LLM hace tres cosas acotadas: clasificar la intención, extraer datos y\n * redactar el mensaje. La calificación la decide src/calificacion/evaluar.js\n * y las respuestas sensibles (selección de intención, no calificado,\n * dirección ambigua, agenda) usan plantillas fijas del tenant.\n *\n * `ctx` es el contexto que devuelve app.contexto_conversacion.\n */\n\nconst MODELO_POR_DEFECTO = 'gpt-4.1-mini';\nconst MENSAJES_EN_CONTEXTO = 20;\nconst NOMBRE_CANAL = { whatsapp: 'WhatsApp', instagram_dm: 'Instagram', facebook_messenger: 'Messenger' };\n\n// AC 46: respuesta segura cuando el LLM falla.\nconst RESPUESTA_SEGURA = 'Gracias por tu mensaje. Tuvimos un inconveniente técnico; en breve continuamos la conversación por este medio.';\n\nfunction modelo(ctx) {\n  const m = ctx.integraciones && ctx.integraciones.llm && ctx.integraciones.llm.modelo;\n  return m && !String(m).startsWith('PENDIENTE') ? m : MODELO_POR_DEFECTO;\n}\n\nfunction rellenar(texto, valores) {\n  return String(texto).replace(/\\{\\{(\\w+)\\}\\}/g, (todo, clave) => (valores[clave] !== undefined ? valores[clave] : todo));\n}\n\nfunction mensajesHistorial(ctx) {\n  return (ctx.historial || [])\n    .slice(-MENSAJES_EN_CONTEXTO)\n    .map((m) => ({ role: m.direccion === 'entrante' ? 'user' : 'assistant', content: m.contenido }));\n}\n\nfunction evento(nivel, proveedor, operacion, mensaje, contexto) {\n  return { nivel, proveedor, operacion, mensaje, contexto: contexto || {} };\n}\n\n/** Contenido del primer choice o un error legible. */\nfunction contenidoOpenAI(respuesta) {\n  const r = respuesta || {};\n  if (r.error) return { error: r.error.message || JSON.stringify(r.error) };\n  const c = r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content;\n  if (typeof c !== 'string' || !c.trim()) return { error: 'Respuesta de OpenAI sin contenido' };\n  return { contenido: c.trim() };\n}\n\nfunction jsonOpenAI(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) return r;\n  try {\n    return { json: JSON.parse(r.contenido) };\n  } catch (e) {\n    return { error: `JSON inválido de OpenAI: ${r.contenido.slice(0, 200)}` };\n  }\n}\n\n// --- Clasificación de intención (AC 06, AC 07) --------------------------------\n\nfunction solicitudClasificacion(ctx, promptClasificador) {\n  const recientes = (ctx.historial || []).filter((m) => m.direccion === 'entrante').slice(-3).map((m) => m.contenido);\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: promptClasificador },\n      { role: 'user', content: recientes.join('\\n') },\n    ],\n  };\n}\n\nfunction interpretarClasificacion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    return { intencion: 'ambigua', eventos: [evento('error', 'openai', 'clasificar_intencion', r.error)] };\n  }\n  const { intencion, confianza } = r.json || {};\n  const valida = ['vender', 'comprar'].includes(intencion) && Number(confianza) >= 0.7;\n  return { intencion: valida ? intencion : 'ambigua', eventos: [] };\n}\n\n// --- Extracción de datos ----------------------------------------------------------\n\nfunction describirCampo(c) {\n  const tipo = c.tipo === 'opcion' ? `una de: ${c.opciones.join(', ')}`\n    : c.tipo === 'booleano' ? 'true o false'\n      : c.tipo === 'numero' ? 'número sin separadores ni unidades'\n        : 'texto';\n  return `- ${c.clave} (${tipo}): ${c.etiqueta}${c.descripcion ? `. ${c.descripcion}` : ''}`;\n}\n\nfunction solicitudExtraccion(ctx) {\n  const sistema = [\n    'Extraes datos de una conversación inmobiliaria. No conversas.',\n    'Devuelve solo JSON con la forma {\"datos\": {...}}.',\n    'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',\n    'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',\n    'Campos:',\n    ...ctx.rol.campos.map(describirCampo),\n    '',\n    `Datos ya registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n  ].join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [{ role: 'system', content: sistema }, ...mensajesHistorial(ctx)],\n  };\n}\n\nfunction interpretarExtraccion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    // Sin extracción el turno continúa con los datos que ya había (AC 46).\n    return { datos: {}, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };\n  }\n  const datos = r.json && typeof r.json.datos === 'object' && !Array.isArray(r.json.datos) ? r.json.datos : {};\n  return { datos, eventos: [] };\n}\n\n// --- Evaluación ----------------------------------------------------------------------\n\n/** Ejecuta el evaluador determinista con la configuración del rol. */\nfunction evaluarTurno(ctx, evaluarCalificacion) {\n  try {\n    return {\n      evaluacion: evaluarCalificacion({\n        criterios: ctx.rol.criterios,\n        requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,\n        datos: ctx.contacto.datos,\n        verificacionDireccion: ctx.verificacion,\n      }),\n      eventos: [],\n    };\n  } catch (e) {\n    // Configuración inválida: no se califica ni se descarta a nadie.\n    return {\n      evaluacion: { resultado: 'informacion_incompleta', accion: 'solicitar_datos', campos_faltantes: [], reglas: [], motivo: e.message, codigo_motivo: 'error_configuracion' },\n      eventos: [evento('error', null, 'evaluar_calificacion', e.message)],\n    };\n  }\n}\n\n// --- Respuesta ----------------------------------------------------------------------\n\nconst PLANTILLA_POR_ACCION = {\n  archivar: 'no_calificado',\n  aclarar_direccion: 'direccion_ambigua',\n  // Etapa 4: mientras el calendario no esté conectado, el contacto calificado\n  // queda registrado y el equipo agenda manualmente (ver evento).\n  ofrecer_agenda: 'falla_agenda',\n};\n\nfunction instruccionSiguientePaso(ctx, ev) {\n  const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));\n  switch (ev.accion) {\n    case 'solicitar_datos': {\n      const siguiente = (ev.campos_faltantes || [])[0];\n      return siguiente\n        ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`\n        : 'Pide la información que falte para continuar.';\n    }\n    case 'verificar_direccion':\n      return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';\n    case 'reintentar_verificacion':\n      return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';\n    default:\n      return 'Continúa la conversación según tus reglas.';\n  }\n}\n\nfunction solicitudRedaccion(ctx) {\n  const ev = ctx.evaluacion || {};\n  const sistema = rellenar(ctx.rol.prompt_sistema, {\n    nombre_tenant: ctx.tenant.nombre,\n    canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,\n  });\n  const estado = [\n    '## Estado de la conversación (lo calcula el sistema)',\n    'El sistema ya registró los datos y evaluó la calificación en este turno; tú solo redactas el siguiente mensaje.',\n    `- Ya te presentaste como asistente virtual: ${ctx.conversacion.identificado_como_virtual ? 'sí' : 'no'}.`,\n    ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio\n      ? null\n      : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: \"${ctx.plantillas.inicio}\"`,\n    `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n    `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,\n    `- Siguiente paso: ${instruccionSiguientePaso(ctx, ev)}`,\n    'Responde solo con el texto del mensaje para la persona, sin comillas ni explicaciones.',\n  ].filter(Boolean).join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0.4,\n    messages: [{ role: 'system', content: `${sistema}\\n\\n${estado}` }, ...mensajesHistorial(ctx)],\n  };\n}\n\n/**\n * Decide la respuesta del turno.\n * @returns {{ respuesta_fija: {texto, plantilla} | null, solicitud_llm: object | null, eventos: object[] }}\n */\nfunction planificarRespuesta(ctx) {\n  const p = ctx.plantillas || {};\n  const fija = (clave, eventos = []) => ({ respuesta_fija: { texto: p[clave], plantilla: clave }, solicitud_llm: null, eventos });\n\n  if (!ctx.rol) {\n    if (p.seleccion_intencion) return fija('seleccion_intencion');\n    return { respuesta_fija: { texto: RESPUESTA_SEGURA, plantilla: null }, solicitud_llm: null, eventos: [evento('error', null, 'planificar_respuesta', 'Falta la plantilla seleccion_intencion')] };\n  }\n\n  const ev = ctx.evaluacion || {};\n  const clave = PLANTILLA_POR_ACCION[ev.accion];\n  if (clave && p[clave]) {\n    const eventos = ev.accion === 'ofrecer_agenda'\n      ? [evento('advertencia', null, 'agendamiento', 'Contacto calificado: el calendario aún no está conectado al flujo; agendar manualmente', { contacto_id: ctx.contacto.id })]\n      : [];\n    return fija(clave, eventos);\n  }\n  return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };\n}\n\nfunction interpretarRedaccion(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) {\n    return { texto: RESPUESTA_SEGURA, plantilla: null, eventos: [evento('error', 'openai', 'redactar_respuesta', r.error)] };\n  }\n  return { texto: r.contenido.replace(/^\"(.*)\"$/s, '$1'), plantilla: null, eventos: [] };\n}\n\nreturn {\n  RESPUESTA_SEGURA,\n  rellenar,\n  solicitudClasificacion,\n  interpretarClasificacion,\n  solicitudExtraccion,\n  interpretarExtraccion,\n  evaluarTurno,\n  planificarRespuesta,\n  interpretarRedaccion,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst r = $('Preparar extracción').item.json.r;\nreturn { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64(conversacion.interpretarExtraccion($json)) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000032",
+      "name": "Interpretar extracción",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.registrar_datos('{{ $json.t }}'::uuid, '{{ $json.c }}'::uuid, convert_from(decode('{{ $json.payload_b64 }}', 'base64'), 'UTF8')::jsonb) as r",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000033",
+      "name": "Registrar datos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3840,
+        -80
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000034",
+              "leftValue": "={{ $json.r.verificacion_pendiente === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000035",
+      "name": "¿Verificar dirección?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4080,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst geocodificacion = (function () {\n'use strict';\n\n/**\n * Google Maps Geocoding para verificar la dirección de Lucía.\n * Criterio en docs/arquitectura.md (\"Criterio para clasificar una dirección\").\n *\n * 'sin_resultados' lo convierte la BD en 'ambigua' o 'no_verificada' según\n * haya habido una aclaración previa (app.registrar_verificacion).\n */\n\nconst URL_GEOCODING = 'https://maps.googleapis.com/maps/api/geocode/json';\nconst PRECISION_SUFICIENTE = new Set(['ROOFTOP', 'RANGE_INTERPOLATED']);\nconst TIPOS_CIUDAD = new Set(['locality', 'administrative_area_level_2', 'administrative_area_level_1']);\n\nfunction normalizarNombre(valor) {\n  return String(valor || '')\n    .normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .toLowerCase()\n    .replace(/[^a-z0-9 ]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\n/** La clave de API la agrega la credencial de n8n (Query Auth: key). */\nfunction solicitudGeocodificacion(direccion, config) {\n  const c = config || {};\n  return {\n    url: URL_GEOCODING,\n    consulta: {\n      address: direccion,\n      region: c.region || 'co',\n      language: c.language || 'es',\n    },\n  };\n}\n\nfunction enCiudad(resultado, ciudad) {\n  const buscada = normalizarNombre(ciudad);\n  if (!buscada) return false;\n  return (resultado.address_components || []).some((c) =>\n    (c.types || []).some((t) => TIPOS_CIUDAD.has(t))\n    && normalizarNombre(c.long_name).includes(buscada));\n}\n\nfunction resumen(respuesta) {\n  const r = respuesta || {};\n  return {\n    status: r.status || null,\n    error_message: r.error_message || (r.error && r.error.message) || null,\n    resultados: Array.isArray(r.results) ? r.results.length : 0,\n    primero: Array.isArray(r.results) && r.results[0]\n      ? { formatted_address: r.results[0].formatted_address, location_type: r.results[0].geometry && r.results[0].geometry.location_type, partial_match: Boolean(r.results[0].partial_match) }\n      : null,\n  };\n}\n\n/**\n * @returns {{ resultado: 'verificada'|'ambigua'|'sin_resultados'|'error',\n *   direccion_normalizada, latitud, longitud, place_id, respuesta_proveedor }}\n */\nfunction clasificarGeocodificacion(respuesta, ciudad) {\n  const r = respuesta || {};\n  const base = { direccion_normalizada: null, latitud: null, longitud: null, place_id: null, respuesta_proveedor: resumen(r) };\n\n  if (r.status === 'ZERO_RESULTS') return { ...base, resultado: 'sin_resultados' };\n  if (r.status !== 'OK' || !Array.isArray(r.results) || r.results.length === 0) return { ...base, resultado: 'error' };\n\n  const primero = r.results[0];\n  const geo = primero.geometry || {};\n  const datos = {\n    ...base,\n    direccion_normalizada: primero.formatted_address || null,\n    latitud: geo.location ? geo.location.lat : null,\n    longitud: geo.location ? geo.location.lng : null,\n    place_id: primero.place_id || null,\n  };\n\n  const precisa = r.results.length === 1\n    && !primero.partial_match\n    && PRECISION_SUFICIENTE.has(geo.location_type)\n    && enCiudad(primero, ciudad);\n\n  return { ...datos, resultado: precisa ? 'verificada' : 'ambigua' };\n}\n\nreturn { solicitudGeocodificacion, clasificarGeocodificacion };\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst r = $json.r;\nreturn { json: { r, solicitud: geocodificacion.solicitudGeocodificacion(r.direccion_a_verificar, r.integraciones.geocodificacion) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000036",
+      "name": "Preparar geocodificación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4320,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.solicitud.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={{ JSON.stringify($json.solicitud.consulta) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000037",
+      "name": "Google Maps: geocodificar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4560,
+        -240
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "notes": "Credencial Query Auth: Google Maps (parámetro \"key\")",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst geocodificacion = (function () {\n'use strict';\n\n/**\n * Google Maps Geocoding para verificar la dirección de Lucía.\n * Criterio en docs/arquitectura.md (\"Criterio para clasificar una dirección\").\n *\n * 'sin_resultados' lo convierte la BD en 'ambigua' o 'no_verificada' según\n * haya habido una aclaración previa (app.registrar_verificacion).\n */\n\nconst URL_GEOCODING = 'https://maps.googleapis.com/maps/api/geocode/json';\nconst PRECISION_SUFICIENTE = new Set(['ROOFTOP', 'RANGE_INTERPOLATED']);\nconst TIPOS_CIUDAD = new Set(['locality', 'administrative_area_level_2', 'administrative_area_level_1']);\n\nfunction normalizarNombre(valor) {\n  return String(valor || '')\n    .normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .toLowerCase()\n    .replace(/[^a-z0-9 ]/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\n/** La clave de API la agrega la credencial de n8n (Query Auth: key). */\nfunction solicitudGeocodificacion(direccion, config) {\n  const c = config || {};\n  return {\n    url: URL_GEOCODING,\n    consulta: {\n      address: direccion,\n      region: c.region || 'co',\n      language: c.language || 'es',\n    },\n  };\n}\n\nfunction enCiudad(resultado, ciudad) {\n  const buscada = normalizarNombre(ciudad);\n  if (!buscada) return false;\n  return (resultado.address_components || []).some((c) =>\n    (c.types || []).some((t) => TIPOS_CIUDAD.has(t))\n    && normalizarNombre(c.long_name).includes(buscada));\n}\n\nfunction resumen(respuesta) {\n  const r = respuesta || {};\n  return {\n    status: r.status || null,\n    error_message: r.error_message || (r.error && r.error.message) || null,\n    resultados: Array.isArray(r.results) ? r.results.length : 0,\n    primero: Array.isArray(r.results) && r.results[0]\n      ? { formatted_address: r.results[0].formatted_address, location_type: r.results[0].geometry && r.results[0].geometry.location_type, partial_match: Boolean(r.results[0].partial_match) }\n      : null,\n  };\n}\n\n/**\n * @returns {{ resultado: 'verificada'|'ambigua'|'sin_resultados'|'error',\n *   direccion_normalizada, latitud, longitud, place_id, respuesta_proveedor }}\n */\nfunction clasificarGeocodificacion(respuesta, ciudad) {\n  const r = respuesta || {};\n  const base = { direccion_normalizada: null, latitud: null, longitud: null, place_id: null, respuesta_proveedor: resumen(r) };\n\n  if (r.status === 'ZERO_RESULTS') return { ...base, resultado: 'sin_resultados' };\n  if (r.status !== 'OK' || !Array.isArray(r.results) || r.results.length === 0) return { ...base, resultado: 'error' };\n\n  const primero = r.results[0];\n  const geo = primero.geometry || {};\n  const datos = {\n    ...base,\n    direccion_normalizada: primero.formatted_address || null,\n    latitud: geo.location ? geo.location.lat : null,\n    longitud: geo.location ? geo.location.lng : null,\n    place_id: primero.place_id || null,\n  };\n\n  const precisa = r.results.length === 1\n    && !primero.partial_match\n    && PRECISION_SUFICIENTE.has(geo.location_type)\n    && enCiudad(primero, ciudad);\n\n  return { ...datos, resultado: precisa ? 'verificada' : 'ambigua' };\n}\n\nreturn { solicitudGeocodificacion, clasificarGeocodificacion };\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst r = $('Preparar geocodificación').item.json.r;\nreturn { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64(geocodificacion.clasificarGeocodificacion($json, $('Preparar geocodificación').item.json.r.contacto.datos.ciudad)) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000038",
+      "name": "Clasificar dirección",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4800,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.registrar_verificacion('{{ $json.t }}'::uuid, '{{ $json.c }}'::uuid, convert_from(decode('{{ $json.payload_b64 }}', 'base64'), 'UTF8')::jsonb) as r",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000039",
+      "name": "Registrar verificación",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        5040,
+        -240
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst evaluar = (function () {\n'use strict';\n\n/**\n * Evaluador determinista de calificación (PRD §5.4, §6.3, AC 19, AC 21).\n *\n * El LLM solo extrae datos de la conversación; la decisión de calificar se\n * toma aquí, con los criterios configurados en app.roles_agente.criterios.\n * El módulo no tiene dependencias para poder pegarse en un nodo Code de n8n.\n *\n * Formato de criterios:\n * {\n *   \"campos_obligatorios\": [\"nombre\", \"direccion\", ...],\n *   \"reglas\": [\n *     { \"id\": \"intencion\", \"campo\": \"intencion_venta\", \"operador\": \"igual\",\n *       \"valor\": true, \"motivo\": \"No manifestó intención de vender\" }\n *   ]\n * }\n *\n * Operadores: igual, distinto, en, no_en, mayor_o_igual, menor_o_igual,\n * entre ([min, max]), presente.\n */\n\nconst RESULTADO = Object.freeze({\n  CALIFICADO: 'calificado',\n  NO_CALIFICADO: 'no_calificado',\n  INFORMACION_INCOMPLETA: 'informacion_incompleta',\n});\n\nconst ACCION = Object.freeze({\n  SOLICITAR_DATOS: 'solicitar_datos',\n  VERIFICAR_DIRECCION: 'verificar_direccion',\n  ACLARAR_DIRECCION: 'aclarar_direccion',\n  REINTENTAR_VERIFICACION: 'reintentar_verificacion',\n  OFRECER_AGENDA: 'ofrecer_agenda',\n  ARCHIVAR: 'archivar',\n});\n\nconst OPERADORES = new Set([\n  'igual', 'distinto', 'en', 'no_en', 'mayor_o_igual', 'menor_o_igual', 'entre', 'presente',\n]);\n\nfunction normalizarTexto(valor) {\n  return String(valor)\n    .normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .trim()\n    .toLowerCase();\n}\n\nfunction normalizar(valor) {\n  return typeof valor === 'string' ? normalizarTexto(valor) : valor;\n}\n\nfunction estaPresente(valor) {\n  if (valor === null || valor === undefined) return false;\n  if (typeof valor === 'string') return valor.trim() !== '';\n  if (Array.isArray(valor)) return valor.length > 0;\n  return true;\n}\n\nfunction obtener(datos, ruta) {\n  return ruta.split('.').reduce((acc, parte) => (acc == null ? undefined : acc[parte]), datos);\n}\n\nfunction aNumero(valor) {\n  if (typeof valor === 'number') return valor;\n  if (typeof valor !== 'string') return NaN;\n  let limpio = valor.replace(/[^\\d.,-]/g, '');\n  if (!/\\d/.test(limpio)) return NaN;\n  // \"450.000.000\" o \"450,000,000\": separadores de miles.\n  if (/^-?\\d{1,3}([.,]\\d{3})+$/.test(limpio)) limpio = limpio.replace(/[.,]/g, '');\n  else limpio = limpio.replace(',', '.');\n  const n = Number(limpio);\n  return Number.isFinite(n) ? n : NaN;\n}\n\nfunction cumpleRegla(regla, valor) {\n  switch (regla.operador) {\n    case 'presente':\n      return estaPresente(valor);\n    case 'igual':\n      return normalizar(valor) === normalizar(regla.valor);\n    case 'distinto':\n      return estaPresente(valor) && normalizar(valor) !== normalizar(regla.valor);\n    case 'en':\n      return regla.valor.map(normalizar).includes(normalizar(valor));\n    case 'no_en':\n      return estaPresente(valor) && !regla.valor.map(normalizar).includes(normalizar(valor));\n    case 'mayor_o_igual':\n      return aNumero(valor) >= regla.valor;\n    case 'menor_o_igual':\n      return aNumero(valor) <= regla.valor;\n    case 'entre': {\n      const n = aNumero(valor);\n      return n >= regla.valor[0] && n <= regla.valor[1];\n    }\n    default:\n      throw new Error(`Operador desconocido: ${regla.operador}`);\n  }\n}\n\n/**\n * Valida la forma de los criterios. Se usa al guardar configuración y en\n * pruebas, para que un error de configuración no llegue a producción.\n */\nfunction validarCriterios(criterios) {\n  const errores = [];\n  if (!criterios || typeof criterios !== 'object') {\n    return ['criterios debe ser un objeto'];\n  }\n  if (!Array.isArray(criterios.campos_obligatorios)) {\n    errores.push('campos_obligatorios debe ser un arreglo');\n  }\n  if (!Array.isArray(criterios.reglas)) {\n    errores.push('reglas debe ser un arreglo');\n    return errores;\n  }\n  const ids = new Set();\n  criterios.reglas.forEach((r, i) => {\n    const p = `reglas[${i}]`;\n    if (!r.id) errores.push(`${p}: falta id`);\n    else if (ids.has(r.id)) errores.push(`${p}: id duplicado \"${r.id}\"`);\n    ids.add(r.id);\n    if (!r.campo) errores.push(`${p}: falta campo`);\n    if (!r.motivo) errores.push(`${p}: falta motivo`);\n    if (!OPERADORES.has(r.operador)) errores.push(`${p}: operador inválido \"${r.operador}\"`);\n    if (['en', 'no_en'].includes(r.operador) && !Array.isArray(r.valor)) {\n      errores.push(`${p}: \"${r.operador}\" requiere un arreglo`);\n    }\n    if (r.operador === 'entre' && !(Array.isArray(r.valor) && r.valor.length === 2)) {\n      errores.push(`${p}: \"entre\" requiere [min, max]`);\n    }\n    if (['mayor_o_igual', 'menor_o_igual'].includes(r.operador) && typeof r.valor !== 'number') {\n      errores.push(`${p}: \"${r.operador}\" requiere un número`);\n    }\n  });\n  return errores;\n}\n\n/**\n * @param {object} p\n * @param {object} p.criterios               roles_agente.criterios\n * @param {boolean} p.requiereVerificacionDireccion  roles_agente.requiere_verificacion_direccion\n * @param {object} p.datos                   datos capturados del contacto\n * @param {object|null} p.verificacionDireccion  última fila de verificaciones_direccion\n *        ({ resultado: 'verificada'|'ambigua'|'no_verificada'|'error', ... })\n * @returns {{ resultado, accion, campos_faltantes, reglas, motivo, codigo_motivo }}\n */\nfunction evaluarCalificacion({ criterios, requiereVerificacionDireccion, datos, verificacionDireccion }) {\n  const errores = validarCriterios(criterios);\n  if (errores.length) {\n    throw new Error(`Criterios inválidos: ${errores.join('; ')}`);\n  }\n\n  const datosSeguros = datos || {};\n  const faltantes = criterios.campos_obligatorios.filter((c) => !estaPresente(obtener(datosSeguros, c)));\n\n  const base = { campos_faltantes: faltantes, reglas: [], motivo: null, codigo_motivo: null };\n\n  // 1. Información mínima (AC 10: no se inventan datos; se piden).\n  if (faltantes.length) {\n    return {\n      ...base,\n      resultado: RESULTADO.INFORMACION_INCOMPLETA,\n      accion: ACCION.SOLICITAR_DATOS,\n      codigo_motivo: 'campos_faltantes',\n      motivo: `Faltan campos obligatorios: ${faltantes.join(', ')}`,\n    };\n  }\n\n  // 2. Verificación de dirección, solo para roles que la exigen (Lucía).\n  if (requiereVerificacionDireccion) {\n    const r = verificacionDireccion && verificacionDireccion.resultado;\n    if (!r) {\n      return {\n        ...base,\n        resultado: RESULTADO.INFORMACION_INCOMPLETA,\n        accion: ACCION.VERIFICAR_DIRECCION,\n        codigo_motivo: 'direccion_sin_verificar',\n        motivo: 'La dirección aún no se ha consultado en Google Maps',\n      };\n    }\n    if (r === 'ambigua') {\n      return {\n        ...base,\n        resultado: RESULTADO.INFORMACION_INCOMPLETA,\n        accion: ACCION.ACLARAR_DIRECCION,\n        codigo_motivo: 'direccion_ambigua',\n        motivo: 'La dirección es ambigua; se solicita ciudad, barrio, referencia o corrección',\n      };\n    }\n    if (r === 'error') {\n      // AC 47: una falla del proveedor no descarta al contacto.\n      return {\n        ...base,\n        resultado: RESULTADO.INFORMACION_INCOMPLETA,\n        accion: ACCION.REINTENTAR_VERIFICACION,\n        codigo_motivo: 'error_verificacion',\n        motivo: 'Falló la consulta a Google Maps; se debe reintentar',\n      };\n    }\n    if (r === 'no_verificada') {\n      // AC 16: no se califica automáticamente.\n      return {\n        ...base,\n        resultado: RESULTADO.NO_CALIFICADO,\n        accion: ACCION.ARCHIVAR,\n        codigo_motivo: 'direccion_no_verificada',\n        motivo: 'La dirección no pudo verificarse como una ubicación real',\n      };\n    }\n  }\n\n  // 3. Reglas de negocio configuradas. Se evalúan todas para dejar trazabilidad.\n  const reglas = criterios.reglas.map((regla) => {\n    const valor = obtener(datosSeguros, regla.campo);\n    return { id: regla.id, campo: regla.campo, valor, cumple: cumpleRegla(regla, valor), motivo: regla.motivo };\n  });\n  const incumplidas = reglas.filter((r) => !r.cumple);\n\n  if (incumplidas.length) {\n    return {\n      ...base,\n      reglas,\n      resultado: RESULTADO.NO_CALIFICADO,\n      accion: ACCION.ARCHIVAR,\n      codigo_motivo: incumplidas.map((r) => r.id).join(','),\n      motivo: incumplidas.map((r) => r.motivo).join('; '),\n    };\n  }\n\n  return {\n    ...base,\n    reglas,\n    resultado: RESULTADO.CALIFICADO,\n    accion: ACCION.OFRECER_AGENDA,\n  };\n}\n\nreturn { evaluarCalificacion, validarCriterios, normalizarTexto, RESULTADO, ACCION };\n})();\nconst conversacion = (function () {\n'use strict';\n\n/**\n * Turno de conversación: solicitudes a OpenAI y decisión de la respuesta.\n *\n * El LLM hace tres cosas acotadas: clasificar la intención, extraer datos y\n * redactar el mensaje. La calificación la decide src/calificacion/evaluar.js\n * y las respuestas sensibles (selección de intención, no calificado,\n * dirección ambigua, agenda) usan plantillas fijas del tenant.\n *\n * `ctx` es el contexto que devuelve app.contexto_conversacion.\n */\n\nconst MODELO_POR_DEFECTO = 'gpt-4.1-mini';\nconst MENSAJES_EN_CONTEXTO = 20;\nconst NOMBRE_CANAL = { whatsapp: 'WhatsApp', instagram_dm: 'Instagram', facebook_messenger: 'Messenger' };\n\n// AC 46: respuesta segura cuando el LLM falla.\nconst RESPUESTA_SEGURA = 'Gracias por tu mensaje. Tuvimos un inconveniente técnico; en breve continuamos la conversación por este medio.';\n\nfunction modelo(ctx) {\n  const m = ctx.integraciones && ctx.integraciones.llm && ctx.integraciones.llm.modelo;\n  return m && !String(m).startsWith('PENDIENTE') ? m : MODELO_POR_DEFECTO;\n}\n\nfunction rellenar(texto, valores) {\n  return String(texto).replace(/\\{\\{(\\w+)\\}\\}/g, (todo, clave) => (valores[clave] !== undefined ? valores[clave] : todo));\n}\n\nfunction mensajesHistorial(ctx) {\n  return (ctx.historial || [])\n    .slice(-MENSAJES_EN_CONTEXTO)\n    .map((m) => ({ role: m.direccion === 'entrante' ? 'user' : 'assistant', content: m.contenido }));\n}\n\nfunction evento(nivel, proveedor, operacion, mensaje, contexto) {\n  return { nivel, proveedor, operacion, mensaje, contexto: contexto || {} };\n}\n\n/** Contenido del primer choice o un error legible. */\nfunction contenidoOpenAI(respuesta) {\n  const r = respuesta || {};\n  if (r.error) return { error: r.error.message || JSON.stringify(r.error) };\n  const c = r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content;\n  if (typeof c !== 'string' || !c.trim()) return { error: 'Respuesta de OpenAI sin contenido' };\n  return { contenido: c.trim() };\n}\n\nfunction jsonOpenAI(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) return r;\n  try {\n    return { json: JSON.parse(r.contenido) };\n  } catch (e) {\n    return { error: `JSON inválido de OpenAI: ${r.contenido.slice(0, 200)}` };\n  }\n}\n\n// --- Clasificación de intención (AC 06, AC 07) --------------------------------\n\nfunction solicitudClasificacion(ctx, promptClasificador) {\n  const recientes = (ctx.historial || []).filter((m) => m.direccion === 'entrante').slice(-3).map((m) => m.contenido);\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: promptClasificador },\n      { role: 'user', content: recientes.join('\\n') },\n    ],\n  };\n}\n\nfunction interpretarClasificacion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    return { intencion: 'ambigua', eventos: [evento('error', 'openai', 'clasificar_intencion', r.error)] };\n  }\n  const { intencion, confianza } = r.json || {};\n  const valida = ['vender', 'comprar'].includes(intencion) && Number(confianza) >= 0.7;\n  return { intencion: valida ? intencion : 'ambigua', eventos: [] };\n}\n\n// --- Extracción de datos ----------------------------------------------------------\n\nfunction describirCampo(c) {\n  const tipo = c.tipo === 'opcion' ? `una de: ${c.opciones.join(', ')}`\n    : c.tipo === 'booleano' ? 'true o false'\n      : c.tipo === 'numero' ? 'número sin separadores ni unidades'\n        : 'texto';\n  return `- ${c.clave} (${tipo}): ${c.etiqueta}${c.descripcion ? `. ${c.descripcion}` : ''}`;\n}\n\nfunction solicitudExtraccion(ctx) {\n  const sistema = [\n    'Extraes datos de una conversación inmobiliaria. No conversas.',\n    'Devuelve solo JSON con la forma {\"datos\": {...}}.',\n    'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',\n    'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',\n    'Campos:',\n    ...ctx.rol.campos.map(describirCampo),\n    '',\n    `Datos ya registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n  ].join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [{ role: 'system', content: sistema }, ...mensajesHistorial(ctx)],\n  };\n}\n\nfunction interpretarExtraccion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    // Sin extracción el turno continúa con los datos que ya había (AC 46).\n    return { datos: {}, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };\n  }\n  const datos = r.json && typeof r.json.datos === 'object' && !Array.isArray(r.json.datos) ? r.json.datos : {};\n  return { datos, eventos: [] };\n}\n\n// --- Evaluación ----------------------------------------------------------------------\n\n/** Ejecuta el evaluador determinista con la configuración del rol. */\nfunction evaluarTurno(ctx, evaluarCalificacion) {\n  try {\n    return {\n      evaluacion: evaluarCalificacion({\n        criterios: ctx.rol.criterios,\n        requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,\n        datos: ctx.contacto.datos,\n        verificacionDireccion: ctx.verificacion,\n      }),\n      eventos: [],\n    };\n  } catch (e) {\n    // Configuración inválida: no se califica ni se descarta a nadie.\n    return {\n      evaluacion: { resultado: 'informacion_incompleta', accion: 'solicitar_datos', campos_faltantes: [], reglas: [], motivo: e.message, codigo_motivo: 'error_configuracion' },\n      eventos: [evento('error', null, 'evaluar_calificacion', e.message)],\n    };\n  }\n}\n\n// --- Respuesta ----------------------------------------------------------------------\n\nconst PLANTILLA_POR_ACCION = {\n  archivar: 'no_calificado',\n  aclarar_direccion: 'direccion_ambigua',\n  // Etapa 4: mientras el calendario no esté conectado, el contacto calificado\n  // queda registrado y el equipo agenda manualmente (ver evento).\n  ofrecer_agenda: 'falla_agenda',\n};\n\nfunction instruccionSiguientePaso(ctx, ev) {\n  const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));\n  switch (ev.accion) {\n    case 'solicitar_datos': {\n      const siguiente = (ev.campos_faltantes || [])[0];\n      return siguiente\n        ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`\n        : 'Pide la información que falte para continuar.';\n    }\n    case 'verificar_direccion':\n      return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';\n    case 'reintentar_verificacion':\n      return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';\n    default:\n      return 'Continúa la conversación según tus reglas.';\n  }\n}\n\nfunction solicitudRedaccion(ctx) {\n  const ev = ctx.evaluacion || {};\n  const sistema = rellenar(ctx.rol.prompt_sistema, {\n    nombre_tenant: ctx.tenant.nombre,\n    canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,\n  });\n  const estado = [\n    '## Estado de la conversación (lo calcula el sistema)',\n    'El sistema ya registró los datos y evaluó la calificación en este turno; tú solo redactas el siguiente mensaje.',\n    `- Ya te presentaste como asistente virtual: ${ctx.conversacion.identificado_como_virtual ? 'sí' : 'no'}.`,\n    ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio\n      ? null\n      : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: \"${ctx.plantillas.inicio}\"`,\n    `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n    `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,\n    `- Siguiente paso: ${instruccionSiguientePaso(ctx, ev)}`,\n    'Responde solo con el texto del mensaje para la persona, sin comillas ni explicaciones.',\n  ].filter(Boolean).join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0.4,\n    messages: [{ role: 'system', content: `${sistema}\\n\\n${estado}` }, ...mensajesHistorial(ctx)],\n  };\n}\n\n/**\n * Decide la respuesta del turno.\n * @returns {{ respuesta_fija: {texto, plantilla} | null, solicitud_llm: object | null, eventos: object[] }}\n */\nfunction planificarRespuesta(ctx) {\n  const p = ctx.plantillas || {};\n  const fija = (clave, eventos = []) => ({ respuesta_fija: { texto: p[clave], plantilla: clave }, solicitud_llm: null, eventos });\n\n  if (!ctx.rol) {\n    if (p.seleccion_intencion) return fija('seleccion_intencion');\n    return { respuesta_fija: { texto: RESPUESTA_SEGURA, plantilla: null }, solicitud_llm: null, eventos: [evento('error', null, 'planificar_respuesta', 'Falta la plantilla seleccion_intencion')] };\n  }\n\n  const ev = ctx.evaluacion || {};\n  const clave = PLANTILLA_POR_ACCION[ev.accion];\n  if (clave && p[clave]) {\n    const eventos = ev.accion === 'ofrecer_agenda'\n      ? [evento('advertencia', null, 'agendamiento', 'Contacto calificado: el calendario aún no está conectado al flujo; agendar manualmente', { contacto_id: ctx.contacto.id })]\n      : [];\n    return fija(clave, eventos);\n  }\n  return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };\n}\n\nfunction interpretarRedaccion(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) {\n    return { texto: RESPUESTA_SEGURA, plantilla: null, eventos: [evento('error', 'openai', 'redactar_respuesta', r.error)] };\n  }\n  return { texto: r.contenido.replace(/^\"(.*)\"$/s, '$1'), plantilla: null, eventos: [] };\n}\n\nreturn {\n  RESPUESTA_SEGURA,\n  rellenar,\n  solicitudClasificacion,\n  interpretarClasificacion,\n  solicitudExtraccion,\n  interpretarExtraccion,\n  evaluarTurno,\n  planificarRespuesta,\n  interpretarRedaccion,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst r = $json.r;\nreturn { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64(conversacion.evaluarTurno(r, evaluar.evaluarCalificacion)) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000040",
+      "name": "Evaluar calificación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.guardar_evaluacion('{{ $json.t }}'::uuid, '{{ $json.c }}'::uuid, convert_from(decode('{{ $json.payload_b64 }}', 'base64'), 'UTF8')::jsonb) as r",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000041",
+      "name": "Guardar evaluación",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        5520,
+        -80
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst conversacion = (function () {\n'use strict';\n\n/**\n * Turno de conversación: solicitudes a OpenAI y decisión de la respuesta.\n *\n * El LLM hace tres cosas acotadas: clasificar la intención, extraer datos y\n * redactar el mensaje. La calificación la decide src/calificacion/evaluar.js\n * y las respuestas sensibles (selección de intención, no calificado,\n * dirección ambigua, agenda) usan plantillas fijas del tenant.\n *\n * `ctx` es el contexto que devuelve app.contexto_conversacion.\n */\n\nconst MODELO_POR_DEFECTO = 'gpt-4.1-mini';\nconst MENSAJES_EN_CONTEXTO = 20;\nconst NOMBRE_CANAL = { whatsapp: 'WhatsApp', instagram_dm: 'Instagram', facebook_messenger: 'Messenger' };\n\n// AC 46: respuesta segura cuando el LLM falla.\nconst RESPUESTA_SEGURA = 'Gracias por tu mensaje. Tuvimos un inconveniente técnico; en breve continuamos la conversación por este medio.';\n\nfunction modelo(ctx) {\n  const m = ctx.integraciones && ctx.integraciones.llm && ctx.integraciones.llm.modelo;\n  return m && !String(m).startsWith('PENDIENTE') ? m : MODELO_POR_DEFECTO;\n}\n\nfunction rellenar(texto, valores) {\n  return String(texto).replace(/\\{\\{(\\w+)\\}\\}/g, (todo, clave) => (valores[clave] !== undefined ? valores[clave] : todo));\n}\n\nfunction mensajesHistorial(ctx) {\n  return (ctx.historial || [])\n    .slice(-MENSAJES_EN_CONTEXTO)\n    .map((m) => ({ role: m.direccion === 'entrante' ? 'user' : 'assistant', content: m.contenido }));\n}\n\nfunction evento(nivel, proveedor, operacion, mensaje, contexto) {\n  return { nivel, proveedor, operacion, mensaje, contexto: contexto || {} };\n}\n\n/** Contenido del primer choice o un error legible. */\nfunction contenidoOpenAI(respuesta) {\n  const r = respuesta || {};\n  if (r.error) return { error: r.error.message || JSON.stringify(r.error) };\n  const c = r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content;\n  if (typeof c !== 'string' || !c.trim()) return { error: 'Respuesta de OpenAI sin contenido' };\n  return { contenido: c.trim() };\n}\n\nfunction jsonOpenAI(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) return r;\n  try {\n    return { json: JSON.parse(r.contenido) };\n  } catch (e) {\n    return { error: `JSON inválido de OpenAI: ${r.contenido.slice(0, 200)}` };\n  }\n}\n\n// --- Clasificación de intención (AC 06, AC 07) --------------------------------\n\nfunction solicitudClasificacion(ctx, promptClasificador) {\n  const recientes = (ctx.historial || []).filter((m) => m.direccion === 'entrante').slice(-3).map((m) => m.contenido);\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: promptClasificador },\n      { role: 'user', content: recientes.join('\\n') },\n    ],\n  };\n}\n\nfunction interpretarClasificacion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    return { intencion: 'ambigua', eventos: [evento('error', 'openai', 'clasificar_intencion', r.error)] };\n  }\n  const { intencion, confianza } = r.json || {};\n  const valida = ['vender', 'comprar'].includes(intencion) && Number(confianza) >= 0.7;\n  return { intencion: valida ? intencion : 'ambigua', eventos: [] };\n}\n\n// --- Extracción de datos ----------------------------------------------------------\n\nfunction describirCampo(c) {\n  const tipo = c.tipo === 'opcion' ? `una de: ${c.opciones.join(', ')}`\n    : c.tipo === 'booleano' ? 'true o false'\n      : c.tipo === 'numero' ? 'número sin separadores ni unidades'\n        : 'texto';\n  return `- ${c.clave} (${tipo}): ${c.etiqueta}${c.descripcion ? `. ${c.descripcion}` : ''}`;\n}\n\nfunction solicitudExtraccion(ctx) {\n  const sistema = [\n    'Extraes datos de una conversación inmobiliaria. No conversas.',\n    'Devuelve solo JSON con la forma {\"datos\": {...}}.',\n    'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',\n    'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',\n    'Campos:',\n    ...ctx.rol.campos.map(describirCampo),\n    '',\n    `Datos ya registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n  ].join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [{ role: 'system', content: sistema }, ...mensajesHistorial(ctx)],\n  };\n}\n\nfunction interpretarExtraccion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    // Sin extracción el turno continúa con los datos que ya había (AC 46).\n    return { datos: {}, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };\n  }\n  const datos = r.json && typeof r.json.datos === 'object' && !Array.isArray(r.json.datos) ? r.json.datos : {};\n  return { datos, eventos: [] };\n}\n\n// --- Evaluación ----------------------------------------------------------------------\n\n/** Ejecuta el evaluador determinista con la configuración del rol. */\nfunction evaluarTurno(ctx, evaluarCalificacion) {\n  try {\n    return {\n      evaluacion: evaluarCalificacion({\n        criterios: ctx.rol.criterios,\n        requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,\n        datos: ctx.contacto.datos,\n        verificacionDireccion: ctx.verificacion,\n      }),\n      eventos: [],\n    };\n  } catch (e) {\n    // Configuración inválida: no se califica ni se descarta a nadie.\n    return {\n      evaluacion: { resultado: 'informacion_incompleta', accion: 'solicitar_datos', campos_faltantes: [], reglas: [], motivo: e.message, codigo_motivo: 'error_configuracion' },\n      eventos: [evento('error', null, 'evaluar_calificacion', e.message)],\n    };\n  }\n}\n\n// --- Respuesta ----------------------------------------------------------------------\n\nconst PLANTILLA_POR_ACCION = {\n  archivar: 'no_calificado',\n  aclarar_direccion: 'direccion_ambigua',\n  // Etapa 4: mientras el calendario no esté conectado, el contacto calificado\n  // queda registrado y el equipo agenda manualmente (ver evento).\n  ofrecer_agenda: 'falla_agenda',\n};\n\nfunction instruccionSiguientePaso(ctx, ev) {\n  const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));\n  switch (ev.accion) {\n    case 'solicitar_datos': {\n      const siguiente = (ev.campos_faltantes || [])[0];\n      return siguiente\n        ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`\n        : 'Pide la información que falte para continuar.';\n    }\n    case 'verificar_direccion':\n      return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';\n    case 'reintentar_verificacion':\n      return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';\n    default:\n      return 'Continúa la conversación según tus reglas.';\n  }\n}\n\nfunction solicitudRedaccion(ctx) {\n  const ev = ctx.evaluacion || {};\n  const sistema = rellenar(ctx.rol.prompt_sistema, {\n    nombre_tenant: ctx.tenant.nombre,\n    canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,\n  });\n  const estado = [\n    '## Estado de la conversación (lo calcula el sistema)',\n    'El sistema ya registró los datos y evaluó la calificación en este turno; tú solo redactas el siguiente mensaje.',\n    `- Ya te presentaste como asistente virtual: ${ctx.conversacion.identificado_como_virtual ? 'sí' : 'no'}.`,\n    ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio\n      ? null\n      : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: \"${ctx.plantillas.inicio}\"`,\n    `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n    `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,\n    `- Siguiente paso: ${instruccionSiguientePaso(ctx, ev)}`,\n    'Responde solo con el texto del mensaje para la persona, sin comillas ni explicaciones.',\n  ].filter(Boolean).join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0.4,\n    messages: [{ role: 'system', content: `${sistema}\\n\\n${estado}` }, ...mensajesHistorial(ctx)],\n  };\n}\n\n/**\n * Decide la respuesta del turno.\n * @returns {{ respuesta_fija: {texto, plantilla} | null, solicitud_llm: object | null, eventos: object[] }}\n */\nfunction planificarRespuesta(ctx) {\n  const p = ctx.plantillas || {};\n  const fija = (clave, eventos = []) => ({ respuesta_fija: { texto: p[clave], plantilla: clave }, solicitud_llm: null, eventos });\n\n  if (!ctx.rol) {\n    if (p.seleccion_intencion) return fija('seleccion_intencion');\n    return { respuesta_fija: { texto: RESPUESTA_SEGURA, plantilla: null }, solicitud_llm: null, eventos: [evento('error', null, 'planificar_respuesta', 'Falta la plantilla seleccion_intencion')] };\n  }\n\n  const ev = ctx.evaluacion || {};\n  const clave = PLANTILLA_POR_ACCION[ev.accion];\n  if (clave && p[clave]) {\n    const eventos = ev.accion === 'ofrecer_agenda'\n      ? [evento('advertencia', null, 'agendamiento', 'Contacto calificado: el calendario aún no está conectado al flujo; agendar manualmente', { contacto_id: ctx.contacto.id })]\n      : [];\n    return fija(clave, eventos);\n  }\n  return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };\n}\n\nfunction interpretarRedaccion(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) {\n    return { texto: RESPUESTA_SEGURA, plantilla: null, eventos: [evento('error', 'openai', 'redactar_respuesta', r.error)] };\n  }\n  return { texto: r.contenido.replace(/^\"(.*)\"$/s, '$1'), plantilla: null, eventos: [] };\n}\n\nreturn {\n  RESPUESTA_SEGURA,\n  rellenar,\n  solicitudClasificacion,\n  interpretarClasificacion,\n  solicitudExtraccion,\n  interpretarExtraccion,\n  evaluarTurno,\n  planificarRespuesta,\n  interpretarRedaccion,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nreturn { json: { r: $json.r, plan: conversacion.planificarRespuesta($json.r) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000042",
+      "name": "Planificar respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5760,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000043",
+              "leftValue": "={{ !!$json.plan.respuesta_fija }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000044",
+      "name": "¿Respuesta fija?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6000,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.plan.solicitud_llm) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000045",
+      "name": "OpenAI: redactar respuesta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6240,
+        -240
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "notes": "Credencial: OpenAI",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst conversacion = (function () {\n'use strict';\n\n/**\n * Turno de conversación: solicitudes a OpenAI y decisión de la respuesta.\n *\n * El LLM hace tres cosas acotadas: clasificar la intención, extraer datos y\n * redactar el mensaje. La calificación la decide src/calificacion/evaluar.js\n * y las respuestas sensibles (selección de intención, no calificado,\n * dirección ambigua, agenda) usan plantillas fijas del tenant.\n *\n * `ctx` es el contexto que devuelve app.contexto_conversacion.\n */\n\nconst MODELO_POR_DEFECTO = 'gpt-4.1-mini';\nconst MENSAJES_EN_CONTEXTO = 20;\nconst NOMBRE_CANAL = { whatsapp: 'WhatsApp', instagram_dm: 'Instagram', facebook_messenger: 'Messenger' };\n\n// AC 46: respuesta segura cuando el LLM falla.\nconst RESPUESTA_SEGURA = 'Gracias por tu mensaje. Tuvimos un inconveniente técnico; en breve continuamos la conversación por este medio.';\n\nfunction modelo(ctx) {\n  const m = ctx.integraciones && ctx.integraciones.llm && ctx.integraciones.llm.modelo;\n  return m && !String(m).startsWith('PENDIENTE') ? m : MODELO_POR_DEFECTO;\n}\n\nfunction rellenar(texto, valores) {\n  return String(texto).replace(/\\{\\{(\\w+)\\}\\}/g, (todo, clave) => (valores[clave] !== undefined ? valores[clave] : todo));\n}\n\nfunction mensajesHistorial(ctx) {\n  return (ctx.historial || [])\n    .slice(-MENSAJES_EN_CONTEXTO)\n    .map((m) => ({ role: m.direccion === 'entrante' ? 'user' : 'assistant', content: m.contenido }));\n}\n\nfunction evento(nivel, proveedor, operacion, mensaje, contexto) {\n  return { nivel, proveedor, operacion, mensaje, contexto: contexto || {} };\n}\n\n/** Contenido del primer choice o un error legible. */\nfunction contenidoOpenAI(respuesta) {\n  const r = respuesta || {};\n  if (r.error) return { error: r.error.message || JSON.stringify(r.error) };\n  const c = r.choices && r.choices[0] && r.choices[0].message && r.choices[0].message.content;\n  if (typeof c !== 'string' || !c.trim()) return { error: 'Respuesta de OpenAI sin contenido' };\n  return { contenido: c.trim() };\n}\n\nfunction jsonOpenAI(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) return r;\n  try {\n    return { json: JSON.parse(r.contenido) };\n  } catch (e) {\n    return { error: `JSON inválido de OpenAI: ${r.contenido.slice(0, 200)}` };\n  }\n}\n\n// --- Clasificación de intención (AC 06, AC 07) --------------------------------\n\nfunction solicitudClasificacion(ctx, promptClasificador) {\n  const recientes = (ctx.historial || []).filter((m) => m.direccion === 'entrante').slice(-3).map((m) => m.contenido);\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [\n      { role: 'system', content: promptClasificador },\n      { role: 'user', content: recientes.join('\\n') },\n    ],\n  };\n}\n\nfunction interpretarClasificacion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    return { intencion: 'ambigua', eventos: [evento('error', 'openai', 'clasificar_intencion', r.error)] };\n  }\n  const { intencion, confianza } = r.json || {};\n  const valida = ['vender', 'comprar'].includes(intencion) && Number(confianza) >= 0.7;\n  return { intencion: valida ? intencion : 'ambigua', eventos: [] };\n}\n\n// --- Extracción de datos ----------------------------------------------------------\n\nfunction describirCampo(c) {\n  const tipo = c.tipo === 'opcion' ? `una de: ${c.opciones.join(', ')}`\n    : c.tipo === 'booleano' ? 'true o false'\n      : c.tipo === 'numero' ? 'número sin separadores ni unidades'\n        : 'texto';\n  return `- ${c.clave} (${tipo}): ${c.etiqueta}${c.descripcion ? `. ${c.descripcion}` : ''}`;\n}\n\nfunction solicitudExtraccion(ctx) {\n  const sistema = [\n    'Extraes datos de una conversación inmobiliaria. No conversas.',\n    'Devuelve solo JSON con la forma {\"datos\": {...}}.',\n    'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',\n    'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',\n    'Campos:',\n    ...ctx.rol.campos.map(describirCampo),\n    '',\n    `Datos ya registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n  ].join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0,\n    response_format: { type: 'json_object' },\n    messages: [{ role: 'system', content: sistema }, ...mensajesHistorial(ctx)],\n  };\n}\n\nfunction interpretarExtraccion(respuesta) {\n  const r = jsonOpenAI(respuesta);\n  if (r.error) {\n    // Sin extracción el turno continúa con los datos que ya había (AC 46).\n    return { datos: {}, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };\n  }\n  const datos = r.json && typeof r.json.datos === 'object' && !Array.isArray(r.json.datos) ? r.json.datos : {};\n  return { datos, eventos: [] };\n}\n\n// --- Evaluación ----------------------------------------------------------------------\n\n/** Ejecuta el evaluador determinista con la configuración del rol. */\nfunction evaluarTurno(ctx, evaluarCalificacion) {\n  try {\n    return {\n      evaluacion: evaluarCalificacion({\n        criterios: ctx.rol.criterios,\n        requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,\n        datos: ctx.contacto.datos,\n        verificacionDireccion: ctx.verificacion,\n      }),\n      eventos: [],\n    };\n  } catch (e) {\n    // Configuración inválida: no se califica ni se descarta a nadie.\n    return {\n      evaluacion: { resultado: 'informacion_incompleta', accion: 'solicitar_datos', campos_faltantes: [], reglas: [], motivo: e.message, codigo_motivo: 'error_configuracion' },\n      eventos: [evento('error', null, 'evaluar_calificacion', e.message)],\n    };\n  }\n}\n\n// --- Respuesta ----------------------------------------------------------------------\n\nconst PLANTILLA_POR_ACCION = {\n  archivar: 'no_calificado',\n  aclarar_direccion: 'direccion_ambigua',\n  // Etapa 4: mientras el calendario no esté conectado, el contacto calificado\n  // queda registrado y el equipo agenda manualmente (ver evento).\n  ofrecer_agenda: 'falla_agenda',\n};\n\nfunction instruccionSiguientePaso(ctx, ev) {\n  const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));\n  switch (ev.accion) {\n    case 'solicitar_datos': {\n      const siguiente = (ev.campos_faltantes || [])[0];\n      return siguiente\n        ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`\n        : 'Pide la información que falte para continuar.';\n    }\n    case 'verificar_direccion':\n      return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';\n    case 'reintentar_verificacion':\n      return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';\n    default:\n      return 'Continúa la conversación según tus reglas.';\n  }\n}\n\nfunction solicitudRedaccion(ctx) {\n  const ev = ctx.evaluacion || {};\n  const sistema = rellenar(ctx.rol.prompt_sistema, {\n    nombre_tenant: ctx.tenant.nombre,\n    canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,\n  });\n  const estado = [\n    '## Estado de la conversación (lo calcula el sistema)',\n    'El sistema ya registró los datos y evaluó la calificación en este turno; tú solo redactas el siguiente mensaje.',\n    `- Ya te presentaste como asistente virtual: ${ctx.conversacion.identificado_como_virtual ? 'sí' : 'no'}.`,\n    ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio\n      ? null\n      : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: \"${ctx.plantillas.inicio}\"`,\n    `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,\n    `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,\n    `- Siguiente paso: ${instruccionSiguientePaso(ctx, ev)}`,\n    'Responde solo con el texto del mensaje para la persona, sin comillas ni explicaciones.',\n  ].filter(Boolean).join('\\n');\n\n  return {\n    model: modelo(ctx),\n    temperature: 0.4,\n    messages: [{ role: 'system', content: `${sistema}\\n\\n${estado}` }, ...mensajesHistorial(ctx)],\n  };\n}\n\n/**\n * Decide la respuesta del turno.\n * @returns {{ respuesta_fija: {texto, plantilla} | null, solicitud_llm: object | null, eventos: object[] }}\n */\nfunction planificarRespuesta(ctx) {\n  const p = ctx.plantillas || {};\n  const fija = (clave, eventos = []) => ({ respuesta_fija: { texto: p[clave], plantilla: clave }, solicitud_llm: null, eventos });\n\n  if (!ctx.rol) {\n    if (p.seleccion_intencion) return fija('seleccion_intencion');\n    return { respuesta_fija: { texto: RESPUESTA_SEGURA, plantilla: null }, solicitud_llm: null, eventos: [evento('error', null, 'planificar_respuesta', 'Falta la plantilla seleccion_intencion')] };\n  }\n\n  const ev = ctx.evaluacion || {};\n  const clave = PLANTILLA_POR_ACCION[ev.accion];\n  if (clave && p[clave]) {\n    const eventos = ev.accion === 'ofrecer_agenda'\n      ? [evento('advertencia', null, 'agendamiento', 'Contacto calificado: el calendario aún no está conectado al flujo; agendar manualmente', { contacto_id: ctx.contacto.id })]\n      : [];\n    return fija(clave, eventos);\n  }\n  return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };\n}\n\nfunction interpretarRedaccion(respuesta) {\n  const r = contenidoOpenAI(respuesta);\n  if (r.error) {\n    return { texto: RESPUESTA_SEGURA, plantilla: null, eventos: [evento('error', 'openai', 'redactar_respuesta', r.error)] };\n  }\n  return { texto: r.contenido.replace(/^\"(.*)\"$/s, '$1'), plantilla: null, eventos: [] };\n}\n\nreturn {\n  RESPUESTA_SEGURA,\n  rellenar,\n  solicitudClasificacion,\n  interpretarClasificacion,\n  solicitudExtraccion,\n  interpretarExtraccion,\n  evaluarTurno,\n  planificarRespuesta,\n  interpretarRedaccion,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst previo = $('Planificar respuesta').item.json;\nconst redaccion = conversacion.interpretarRedaccion($json);\nreturn { json: { r: previo.r, respuesta: { ...redaccion, eventos: [...previo.plan.eventos, ...redaccion.eventos] } } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000046",
+      "name": "Interpretar redacción",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6480,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst meta = (function () {\n'use strict';\n\n/**\n * Meta (WhatsApp Cloud API e Instagram): normaliza webhooks y arma envíos.\n *\n * Funciones puras que scripts/generar-n8n.js copia en nodos Code del flujo.\n * No usan require ni módulos: el sandbox de n8n Cloud no los permite.\n */\n\nconst GRAPH = 'https://graph.facebook.com/v21.0';\n\n/**\n * Prepara la verificación de X-Hub-Signature-256. La comparación con el App\n * Secret ocurre en Supabase (app.verificar_firma_meta), así el secreto nunca\n * pasa por n8n. Una firma con formato inválido se envía vacía.\n */\nfunction prepararFirma(cuerpoCrudo, cabeceras) {\n  const firma = String((cabeceras || {})['x-hub-signature-256'] || '').toLowerCase();\n  return {\n    cuerpo_b64: Buffer.from(cuerpoCrudo || '').toString('base64'),\n    firma: /^sha256=[0-9a-f]{64}$/.test(firma) ? firma : '',\n  };\n}\n\nfunction textoWhatsApp(m) {\n  switch (m.type) {\n    case 'text': return m.text && m.text.body;\n    case 'button': return m.button && m.button.text;\n    case 'interactive': {\n      const i = m.interactive || {};\n      return (i.button_reply && i.button_reply.title) || (i.list_reply && i.list_reply.title);\n    }\n    default: return null;\n  }\n}\n\n/**\n * Convierte el cuerpo de un webhook de Meta en mensajes normalizados:\n * { tipo_canal, identificador_canal, id_externo, remitente_id, nombre, texto, tipo_mensaje }\n * Ignora estados de entrega, lecturas, ecos de nuestros propios mensajes y\n * objetos no soportados.\n */\nfunction normalizarWebhook(cuerpo) {\n  const salida = [];\n  const entradas = (cuerpo && Array.isArray(cuerpo.entry)) ? cuerpo.entry : [];\n\n  if (cuerpo && cuerpo.object === 'whatsapp_business_account') {\n    for (const entrada of entradas) {\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        if (cambio.field !== 'messages' || !v.metadata) continue;\n        const nombres = new Map((v.contacts || []).map((c) => [c.wa_id, c.profile && c.profile.name]));\n        for (const m of v.messages || []) {\n          salida.push({\n            tipo_canal: 'whatsapp',\n            identificador_canal: v.metadata.phone_number_id,\n            id_externo: m.id,\n            remitente_id: m.from,\n            nombre: nombres.get(m.from) || null,\n            texto: textoWhatsApp(m) || null,\n            tipo_mensaje: m.type,\n          });\n        }\n      }\n    }\n  }\n\n  if (cuerpo && cuerpo.object === 'instagram') {\n    for (const entrada of entradas) {\n      for (const ev of entrada.messaging || []) {\n        const m = ev.message;\n        if (!m || m.is_echo || m.is_deleted || !ev.sender || ev.sender.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_dm',\n          identificador_canal: entrada.id,\n          id_externo: m.mid,\n          remitente_id: ev.sender.id,\n          nombre: null,\n          texto: m.text || null,\n          tipo_mensaje: m.text ? 'text' : 'attachment',\n        });\n      }\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        // Las respuestas de la propia cuenta también llegan como comentarios.\n        if (cambio.field !== 'comments' || !v.id || !v.from || v.from.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_comentario',\n          identificador_canal: entrada.id,\n          id_externo: v.id,\n          remitente_id: v.from.id,\n          nombre: v.from.username || null,\n          texto: v.text || null,\n          tipo_mensaje: 'comment',\n        });\n      }\n    }\n  }\n\n  return salida.filter((m) => m.identificador_canal && m.id_externo && m.remitente_id);\n}\n\n/** Solicitud a la Graph API para responder por el canal de la conversación. */\nfunction solicitudEnvio(ctx, texto) {\n  if (ctx.canal.tipo === 'whatsapp') {\n    return {\n      url: `${GRAPH}/${encodeURIComponent(ctx.canal.identificador_externo)}/messages`,\n      cuerpo: {\n        messaging_product: 'whatsapp',\n        recipient_type: 'individual',\n        to: String(ctx.contacto.telefono || '').replace(/\\D/g, ''),\n        type: 'text',\n        text: { preview_url: false, body: texto },\n      },\n    };\n  }\n  if (ctx.canal.tipo === 'instagram_dm') {\n    return {\n      url: `${GRAPH}/me/messages`,\n      cuerpo: { recipient: { id: ctx.contacto.instagram_id }, message: { text: texto } },\n    };\n  }\n  throw new Error(`Canal sin envío configurado: ${ctx.canal.tipo}`);\n}\n\nfunction solicitudRespuestaComentario(comentarioId, texto) {\n  return { url: `${GRAPH}/${encodeURIComponent(comentarioId)}/replies`, cuerpo: { message: texto } };\n}\n\n/**\n * Interpreta la respuesta del nodo HTTP (con \"continuar ante error\", un fallo\n * llega como { error: {...} }).\n */\nfunction interpretarEnvio(respuesta) {\n  const r = respuesta || {};\n  const id = (Array.isArray(r.messages) && r.messages[0] && r.messages[0].id) || r.message_id || r.id || null;\n  if (r.error || !id) {\n    const e = r.error || {};\n    return {\n      enviado: false,\n      id_externo: null,\n      error: { mensaje: e.message || 'Respuesta sin id de mensaje', codigo: e.code || e.httpCode || null, descripcion: e.description || null },\n    };\n  }\n  return { enviado: true, id_externo: id, error: null };\n}\n\nreturn {\n  prepararFirma,\n  normalizarWebhook,\n  solicitudEnvio,\n  solicitudRespuestaComentario,\n  interpretarEnvio,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst respuesta = $json.respuesta || { ...$json.plan.respuesta_fija, eventos: $json.plan.eventos };\nreturn { json: { r: $json.r, respuesta, envio: meta.solicitudEnvio($json.r, respuesta.texto) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000047",
+      "name": "Preparar envío",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6720,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000048",
+              "leftValue": "={{ $json.r.canal.tipo === 'whatsapp' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000049",
+      "name": "¿WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6960,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.envio.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.envio.cuerpo) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000050",
+      "name": "WhatsApp: enviar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7200,
+        -240
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "notes": "Credencial Header Auth: Meta WhatsApp",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.envio.url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.envio.cuerpo) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000051",
+      "name": "Instagram: enviar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7200,
+        80
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "notes": "Credencial Header Auth: Meta Instagram",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst meta = (function () {\n'use strict';\n\n/**\n * Meta (WhatsApp Cloud API e Instagram): normaliza webhooks y arma envíos.\n *\n * Funciones puras que scripts/generar-n8n.js copia en nodos Code del flujo.\n * No usan require ni módulos: el sandbox de n8n Cloud no los permite.\n */\n\nconst GRAPH = 'https://graph.facebook.com/v21.0';\n\n/**\n * Prepara la verificación de X-Hub-Signature-256. La comparación con el App\n * Secret ocurre en Supabase (app.verificar_firma_meta), así el secreto nunca\n * pasa por n8n. Una firma con formato inválido se envía vacía.\n */\nfunction prepararFirma(cuerpoCrudo, cabeceras) {\n  const firma = String((cabeceras || {})['x-hub-signature-256'] || '').toLowerCase();\n  return {\n    cuerpo_b64: Buffer.from(cuerpoCrudo || '').toString('base64'),\n    firma: /^sha256=[0-9a-f]{64}$/.test(firma) ? firma : '',\n  };\n}\n\nfunction textoWhatsApp(m) {\n  switch (m.type) {\n    case 'text': return m.text && m.text.body;\n    case 'button': return m.button && m.button.text;\n    case 'interactive': {\n      const i = m.interactive || {};\n      return (i.button_reply && i.button_reply.title) || (i.list_reply && i.list_reply.title);\n    }\n    default: return null;\n  }\n}\n\n/**\n * Convierte el cuerpo de un webhook de Meta en mensajes normalizados:\n * { tipo_canal, identificador_canal, id_externo, remitente_id, nombre, texto, tipo_mensaje }\n * Ignora estados de entrega, lecturas, ecos de nuestros propios mensajes y\n * objetos no soportados.\n */\nfunction normalizarWebhook(cuerpo) {\n  const salida = [];\n  const entradas = (cuerpo && Array.isArray(cuerpo.entry)) ? cuerpo.entry : [];\n\n  if (cuerpo && cuerpo.object === 'whatsapp_business_account') {\n    for (const entrada of entradas) {\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        if (cambio.field !== 'messages' || !v.metadata) continue;\n        const nombres = new Map((v.contacts || []).map((c) => [c.wa_id, c.profile && c.profile.name]));\n        for (const m of v.messages || []) {\n          salida.push({\n            tipo_canal: 'whatsapp',\n            identificador_canal: v.metadata.phone_number_id,\n            id_externo: m.id,\n            remitente_id: m.from,\n            nombre: nombres.get(m.from) || null,\n            texto: textoWhatsApp(m) || null,\n            tipo_mensaje: m.type,\n          });\n        }\n      }\n    }\n  }\n\n  if (cuerpo && cuerpo.object === 'instagram') {\n    for (const entrada of entradas) {\n      for (const ev of entrada.messaging || []) {\n        const m = ev.message;\n        if (!m || m.is_echo || m.is_deleted || !ev.sender || ev.sender.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_dm',\n          identificador_canal: entrada.id,\n          id_externo: m.mid,\n          remitente_id: ev.sender.id,\n          nombre: null,\n          texto: m.text || null,\n          tipo_mensaje: m.text ? 'text' : 'attachment',\n        });\n      }\n      for (const cambio of entrada.changes || []) {\n        const v = cambio.value || {};\n        // Las respuestas de la propia cuenta también llegan como comentarios.\n        if (cambio.field !== 'comments' || !v.id || !v.from || v.from.id === entrada.id) continue;\n        salida.push({\n          tipo_canal: 'instagram_comentario',\n          identificador_canal: entrada.id,\n          id_externo: v.id,\n          remitente_id: v.from.id,\n          nombre: v.from.username || null,\n          texto: v.text || null,\n          tipo_mensaje: 'comment',\n        });\n      }\n    }\n  }\n\n  return salida.filter((m) => m.identificador_canal && m.id_externo && m.remitente_id);\n}\n\n/** Solicitud a la Graph API para responder por el canal de la conversación. */\nfunction solicitudEnvio(ctx, texto) {\n  if (ctx.canal.tipo === 'whatsapp') {\n    return {\n      url: `${GRAPH}/${encodeURIComponent(ctx.canal.identificador_externo)}/messages`,\n      cuerpo: {\n        messaging_product: 'whatsapp',\n        recipient_type: 'individual',\n        to: String(ctx.contacto.telefono || '').replace(/\\D/g, ''),\n        type: 'text',\n        text: { preview_url: false, body: texto },\n      },\n    };\n  }\n  if (ctx.canal.tipo === 'instagram_dm') {\n    return {\n      url: `${GRAPH}/me/messages`,\n      cuerpo: { recipient: { id: ctx.contacto.instagram_id }, message: { text: texto } },\n    };\n  }\n  throw new Error(`Canal sin envío configurado: ${ctx.canal.tipo}`);\n}\n\nfunction solicitudRespuestaComentario(comentarioId, texto) {\n  return { url: `${GRAPH}/${encodeURIComponent(comentarioId)}/replies`, cuerpo: { message: texto } };\n}\n\n/**\n * Interpreta la respuesta del nodo HTTP (con \"continuar ante error\", un fallo\n * llega como { error: {...} }).\n */\nfunction interpretarEnvio(respuesta) {\n  const r = respuesta || {};\n  const id = (Array.isArray(r.messages) && r.messages[0] && r.messages[0].id) || r.message_id || r.id || null;\n  if (r.error || !id) {\n    const e = r.error || {};\n    return {\n      enviado: false,\n      id_externo: null,\n      error: { mensaje: e.message || 'Respuesta sin id de mensaje', codigo: e.code || e.httpCode || null, descripcion: e.description || null },\n    };\n  }\n  return { enviado: true, id_externo: id, error: null };\n}\n\nreturn {\n  prepararFirma,\n  normalizarWebhook,\n  solicitudEnvio,\n  solicitudRespuestaComentario,\n  interpretarEnvio,\n};\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nconst previo = $('Preparar envío').item.json;\nconst envio = meta.interpretarEnvio($json);\nconst p = { texto: previo.respuesta.texto, plantilla: previo.respuesta.plantilla, eventos: previo.respuesta.eventos, ...envio };\nreturn { json: { t: previo.r.tenant.id, c: previo.r.conversacion.id, payload_b64: b64(p) } };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000052",
+      "name": "Resultado del envío",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7440,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.registrar_respuesta('{{ $json.t }}'::uuid, '{{ $json.c }}'::uuid, convert_from(decode('{{ $json.payload_b64 }}', 'base64'), 'UTF8')::jsonb) as r",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000053",
+      "name": "Registrar respuesta",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        7680,
+        -80
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    }
+  ],
+  "connections": {
+    "Meta: verificación (GET)": {
+      "main": [
+        [
+          {
+            "node": "Preparar token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar token": {
+      "main": [
+        [
+          {
+            "node": "Validar token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar token": {
+      "main": [
+        [
+          {
+            "node": "¿Token válido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Token válido?": {
+      "main": [
+        [
+          {
+            "node": "Responder challenge",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder 403",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta: eventos (POST)": {
+      "main": [
+        [
+          {
+            "node": "Preparar firma",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar firma": {
+      "main": [
+        [
+          {
+            "node": "Verificar firma",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar firma": {
+      "main": [
+        [
+          {
+            "node": "¿Firma válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Firma válida?": {
+      "main": [
+        [
+          {
+            "node": "Normalizar eventos de Meta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rechazar firma inválida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar eventos de Meta": {
+      "main": [
+        [
+          {
+            "node": "Registrar mensaje entrante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar mensaje entrante": {
+      "main": [
+        [
+          {
+            "node": "¿Mensaje nuevo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Mensaje nuevo?": {
+      "main": [
+        [
+          {
+            "node": "¿Tiene rol?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿Comentario?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Comentario?": {
+      "main": [
+        [
+          {
+            "node": "Preparar respuesta a comentario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar respuesta a comentario": {
+      "main": [
+        [
+          {
+            "node": "Instagram: responder comentario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Tiene rol?": {
+      "main": [
+        [
+          {
+            "node": "Preparar extracción",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Preparar clasificación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar clasificación": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: clasificar intención",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: clasificar intención": {
+      "main": [
+        [
+          {
+            "node": "Interpretar intención",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar intención": {
+      "main": [
+        [
+          {
+            "node": "Asignar rol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Asignar rol": {
+      "main": [
+        [
+          {
+            "node": "¿Rol asignado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Rol asignado?": {
+      "main": [
+        [
+          {
+            "node": "Preparar extracción",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Planificar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar extracción": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: extraer datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: extraer datos": {
+      "main": [
+        [
+          {
+            "node": "Interpretar extracción",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar extracción": {
+      "main": [
+        [
+          {
+            "node": "Registrar datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar datos": {
+      "main": [
+        [
+          {
+            "node": "¿Verificar dirección?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Verificar dirección?": {
+      "main": [
+        [
+          {
+            "node": "Preparar geocodificación",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Evaluar calificación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar geocodificación": {
+      "main": [
+        [
+          {
+            "node": "Google Maps: geocodificar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Maps: geocodificar": {
+      "main": [
+        [
+          {
+            "node": "Clasificar dirección",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar dirección": {
+      "main": [
+        [
+          {
+            "node": "Registrar verificación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar verificación": {
+      "main": [
+        [
+          {
+            "node": "Evaluar calificación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar calificación": {
+      "main": [
+        [
+          {
+            "node": "Guardar evaluación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar evaluación": {
+      "main": [
+        [
+          {
+            "node": "Planificar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planificar respuesta": {
+      "main": [
+        [
+          {
+            "node": "¿Respuesta fija?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Respuesta fija?": {
+      "main": [
+        [
+          {
+            "node": "Preparar envío",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OpenAI: redactar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: redactar respuesta": {
+      "main": [
+        [
+          {
+            "node": "Interpretar redacción",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar redacción": {
+      "main": [
+        [
+          {
+            "node": "Preparar envío",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar envío": {
+      "main": [
+        [
+          {
+            "node": "¿WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: enviar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Instagram: enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp: enviar": {
+      "main": [
+        [
+          {
+            "node": "Resultado del envío",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram: enviar": {
+      "main": [
+        [
+          {
+            "node": "Resultado del envío",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resultado del envío": {
+      "main": [
+        [
+          {
+            "node": "Registrar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
