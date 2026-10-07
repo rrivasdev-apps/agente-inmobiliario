@@ -38,7 +38,7 @@ Fallas de proveedor (AC 46, 47): OpenAI, Google Maps y Meta tienen "continuar an
 
 ### 1. Base de datos
 
-Aplicar `0001_esquema_inicial.sql`, `0002_funciones_n8n.sql` y `seed.sql` en el proyecto `joylroehptnhelxodhqi`.
+✅ `0001_esquema_inicial.sql`, `0002_funciones_n8n.sql` y `seed.sql` ya están aplicados en el proyecto `joylroehptnhelxodhqi` (7 oct 2026). Una migración nueva se aplica con el endpoint de migraciones de la Management API o `supabase db push`, para que quede registrada en `supabase_migrations.schema_migrations`.
 
 Secretos de Meta en Vault (SQL Editor de Supabase). Nunca salen de la BD:
 

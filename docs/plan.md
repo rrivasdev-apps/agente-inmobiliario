@@ -10,7 +10,7 @@
 
 ## Etapa 2 — Canal y conversación (n8n)
 
-- Proyecto de Supabase (`joylroehptnhelxodhqi`) y aplicación de las migraciones: pendiente.
+- ✅ Proyecto de Supabase (`joylroehptnhelxodhqi`): migraciones 0001 y 0002 y seed aplicados (7 oct 2026). Faltan secretos de Meta en Vault e identificadores reales de canales.
 - ✅ Webhook de Meta (WhatsApp + Instagram DM + comentarios) con validación de firma.
 - ✅ Resolución de tenant, idempotencia y registro de mensajes.
 - ✅ Clasificador de intención, extracción de datos, evaluación y respuesta.
