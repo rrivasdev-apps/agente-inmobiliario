@@ -19,11 +19,13 @@
 ## Etapa 3 — Verificación y CRM
 
 - `verificar_direccion` con Google Maps.
-- Upsert en GoHighLevel con política de duplicados, etiquetas y campos personalizados.
+- ✅ Solicitud de upsert de contactos en GoHighLevel (etiquetas, sin asignar asesor).
+- Campos personalizados en GoHighLevel, cuando se aprueben.
 
 ## Etapa 4 — Agendamiento y entrega
 
-- Adaptador del proveedor de calendario elegido (interfaz común para los tres).
+- ✅ Módulo de calendario de GoHighLevel (disponibilidad, reserva, conciliación, errores).
+- Configurar el calendario en la subcuenta (checklist en [gohighlevel.md](gohighlevel.md)).
 - Reserva, confirmación por webhook, asignación y notificación al asesor.
 
 ## Etapa 5 — Aceptación
@@ -31,13 +33,18 @@
 - Ejecutar las 15 pruebas mínimas del PRD §9.8 contra un número de prueba.
 - Prueba de aislamiento con un segundo tenant (ya cubierta a nivel BD).
 
+## Decisiones tomadas
+
+| Decisión | Fecha | Detalle |
+|---|---|---|
+| Calendario: GoHighLevel nativo | 7 oct 2026 | Ver [gohighlevel.md](gohighlevel.md) |
+
 ## Decisiones pendientes que bloquean etapas
 
 | Decisión (PRD §10) | Bloquea | Valor provisional en el repo |
 |---|---|---|
-| Proveedor de calendario | Etapa 4 | Ninguno |
 | Modalidades, duración, horarios, zona horaria | Etapa 4 | Zona `America/Bogota` |
-| Asignación y distribución de asesores | Etapa 4 | Ninguno |
+| Asignación y distribución de asesores | Etapa 4 | Round-robin del calendario de GoHighLevel (por confirmar) |
 | Facebook en Fase 1 | Etapa 2 | Tipo de canal creado, sin canal configurado |
 | Relación válida con la propiedad | Aceptación | propietario, copropietario, apoderado |
 | Ciudades, zonas y tipos de inmueble | Aceptación | Bogotá; todos los tipos salvo "otro" |

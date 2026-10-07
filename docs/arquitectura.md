@@ -11,8 +11,7 @@ Fuente: PRD v2 (7 de octubre de 2026).
 | **OpenAI** | Clasificar intención y conducir la conversación. Extrae datos; **no decide** la calificación. |
 | **Supabase** | Fuente de verdad de datos y configuración por tenant (§8.2). |
 | **Google Maps** (Geocoding) | Verificar que la dirección de Lucía es una ubicación real. |
-| **GoHighLevel** | Contactos, etiquetas, estado comercial y, si se elige, calendario. |
-| **Calendario** | GoHighLevel, Calendly o Google Calendar, según el tenant (pendiente de decisión). |
+| **GoHighLevel** | Contactos, etiquetas, estado comercial y calendario nativo (decisión del 7 oct 2026, ver [gohighlevel.md](gohighlevel.md)). |
 
 ## Flujo de un mensaje entrante
 
@@ -65,7 +64,7 @@ evaluar_calificacion = calificado
   └─▶ con cita confirmada: elegir asesor → app.entregas_asesor → notificar → entregado_asesor     AC 35, 36
 ```
 
-Para reservas por enlace (Calendly / página de reserva) la confirmación llega por **webhook del proveedor**, que sigue el mismo camino desde "cita confirmada".
+Si el contacto reserva desde el enlace de la página de reservas de GoHighLevel en lugar del chat, la confirmación llega por el **webhook de citas de GoHighLevel**, que sigue el mismo camino desde "cita confirmada".
 
 ## Garantías aplicadas en la base de datos
 

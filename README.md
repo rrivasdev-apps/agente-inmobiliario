@@ -18,6 +18,7 @@ config/tenants/<tenant>/      Configuración por empresa (fuente del seed)
   plantillas.json             Textos conversacionales (PRD §7)
 prompts/                      Prompts de sistema (común, Lucía, Sonia, clasificador)
 src/calificacion/evaluar.js   Motor de calificación determinista (sin dependencias)
+src/integraciones/gohighlevel.js  Contactos y calendario de GoHighLevel (funciones puras)
 supabase/migrations/          Esquema de base de datos
 supabase/seed.sql             GENERADO desde config/ y prompts/
 tests/                        Pruebas del evaluador y de la base de datos
@@ -39,3 +40,4 @@ npm run seed:check  # verifica que el seed está actualizado
 
 - [Arquitectura](docs/arquitectura.md)
 - [Plan y decisiones pendientes](docs/plan.md)
+- [GoHighLevel: CRM y calendario](docs/gohighlevel.md)

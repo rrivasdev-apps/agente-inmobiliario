@@ -4,18 +4,77 @@
   "zona_horaria": "America/Bogota",
   "mercado": "Bogotá",
   "canales": [
-    { "tipo": "whatsapp", "identificador_externo": "PENDIENTE_WHATSAPP_PHONE_NUMBER_ID", "nombre": "WhatsApp principal" },
-    { "tipo": "instagram_dm", "identificador_externo": "PENDIENTE_INSTAGRAM_ACCOUNT_ID", "nombre": "Instagram DM" },
-    { "tipo": "instagram_comentario", "identificador_externo": "PENDIENTE_INSTAGRAM_ACCOUNT_ID", "nombre": "Instagram comentarios" }
+    {
+      "tipo": "whatsapp",
+      "identificador_externo": "PENDIENTE_WHATSAPP_PHONE_NUMBER_ID",
+      "nombre": "WhatsApp principal"
+    },
+    {
+      "tipo": "instagram_dm",
+      "identificador_externo": "PENDIENTE_INSTAGRAM_ACCOUNT_ID",
+      "nombre": "Instagram DM"
+    },
+    {
+      "tipo": "instagram_comentario",
+      "identificador_externo": "PENDIENTE_INSTAGRAM_ACCOUNT_ID",
+      "nombre": "Instagram comentarios"
+    }
   ],
   "integraciones": [
-    { "categoria": "crm", "proveedor": "gohighlevel", "configuracion": { "location_id": "PENDIENTE" }, "referencia_credencial": "n8n:ghl-javier-nunez" },
-    { "categoria": "geocodificacion", "proveedor": "google_maps", "configuracion": { "region": "co", "language": "es" }, "referencia_credencial": "n8n:google-maps" },
-    { "categoria": "llm", "proveedor": "openai", "configuracion": { "modelo": "PENDIENTE" }, "referencia_credencial": "n8n:openai" },
-    { "categoria": "mensajeria", "proveedor": "meta", "configuracion": {}, "referencia_credencial": "n8n:meta-javier-nunez" }
+    {
+      "categoria": "crm",
+      "proveedor": "gohighlevel",
+      "configuracion": {
+        "location_id": "PENDIENTE"
+      },
+      "referencia_credencial": "n8n:ghl-javier-nunez"
+    },
+    {
+      "categoria": "calendario",
+      "proveedor": "gohighlevel_calendar",
+      "configuracion": {
+        "location_id": "PENDIENTE",
+        "calendar_id": "PENDIENTE",
+        "duracion_minutos": null,
+        "modalidades": {
+          "llamada": "phone",
+          "videollamada": "gmeet",
+          "presencial": "address"
+        },
+        "dias_a_consultar": 7,
+        "antelacion_minima_minutos": 60,
+        "horarios_a_ofrecer": 4,
+        "horarios_por_dia": 2
+      },
+      "referencia_credencial": "n8n:ghl-javier-nunez"
+    },
+    {
+      "categoria": "geocodificacion",
+      "proveedor": "google_maps",
+      "configuracion": {
+        "region": "co",
+        "language": "es"
+      },
+      "referencia_credencial": "n8n:google-maps"
+    },
+    {
+      "categoria": "llm",
+      "proveedor": "openai",
+      "configuracion": {
+        "modelo": "PENDIENTE"
+      },
+      "referencia_credencial": "n8n:openai"
+    },
+    {
+      "categoria": "mensajeria",
+      "proveedor": "meta",
+      "configuracion": {},
+      "referencia_credencial": "n8n:meta-javier-nunez"
+    }
   ],
   "pendientes": [
     "Confirmar si Facebook Messenger entra en Fase 1 (PRD §10).",
-    "Elegir proveedor de calendario: GoHighLevel, Calendly o Google Calendar (PRD §10). No se crea integración de calendario hasta decidirlo."
+    "Crear el calendario en GoHighLevel y registrar calendar_id (ver docs/gohighlevel.md).",
+    "Definir duración de la cita, horarios de atención y modalidades ofrecidas (valores provisionales: llamada, videollamada, presencial)."
   ]
 }
