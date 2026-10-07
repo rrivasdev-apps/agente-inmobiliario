@@ -1,0 +1,15 @@
+[
+  { "clave": "seleccion_intencion", "rol": null, "texto": "Hola, soy el asistente virtual del equipo de Javier Núñez. Para orientarte correctamente, cuéntame: ¿quieres vender una propiedad o estás buscando una propiedad para comprar?" },
+  { "clave": "inicio", "rol": "lucia", "texto": "Hola, soy Lucía, la asistente virtual del equipo de Javier Núñez. Te haré unas preguntas breves para conocer la propiedad que deseas vender y determinar el siguiente paso. ¿Cuál es tu nombre?" },
+  { "clave": "inicio", "rol": "sonia", "texto": "Hola, soy Sonia, la asistente virtual del equipo de Javier Núñez. Te haré unas preguntas breves para entender qué propiedad buscas. ¿Cuál es tu nombre?" },
+  { "clave": "comentario_instagram", "rol": null, "texto": "¡Hola! Gracias por escribirnos. Envíanos un mensaje directo con la palabra INFO para poder ayudarte." },
+  { "clave": "direccion_ambigua", "rol": "lucia", "texto": "No pude identificar la dirección con suficiente precisión. ¿Podrías confirmar la ciudad, el barrio y la dirección completa o compartir un punto de referencia?" },
+  { "clave": "calificado", "rol": "lucia", "texto": "Gracias, cumples con los criterios para continuar. El siguiente paso es agendar una conversación con uno de nuestros asesores. ¿Cuál de estos horarios prefieres? {{horarios_disponibles}}" },
+  { "clave": "calificado", "rol": "sonia", "texto": "Gracias, ya contamos con la información necesaria y cumples con los criterios para continuar. Ahora puedes agendar una conversación con uno de nuestros asesores. ¿Cuál de estos horarios prefieres? {{horarios_disponibles}}" },
+  { "clave": "enlace_agenda", "rol": null, "texto": "Puedes escoger el horario que mejor te convenga aquí: {{enlace_agenda}}. La cita quedará confirmada cuando completes la reserva." },
+  { "clave": "confirmacion", "rol": null, "texto": "Tu cita quedó confirmada para el {{fecha}} a las {{hora}}, zona horaria {{zona_horaria}}, mediante {{modalidad}}. El asesor asignado continuará contigo en ese momento." },
+  { "clave": "pendiente_agenda", "rol": null, "texto": "Ya completamos la calificación. Para continuar, todavía debes seleccionar una fecha y hora para conversar con un asesor: {{enlace_agenda}}.", "requiere_aprobacion_meta": true },
+  { "clave": "horario_agotado", "rol": null, "texto": "Ese horario ya no se encuentra disponible. Puedo ofrecerte estas alternativas: {{horarios_alternativos}}." },
+  { "clave": "falla_agenda", "rol": null, "texto": "No fue posible confirmar la cita en este momento. Tu información quedó registrada, pero el horario aún no está reservado." },
+  { "clave": "no_calificado", "rol": null, "texto": "Gracias por compartir la información. En este momento tu caso no cumple las condiciones necesarias para continuar con el proceso." }
+]

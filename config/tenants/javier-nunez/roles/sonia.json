@@ -1,0 +1,34 @@
+{
+  "codigo": "sonia",
+  "nombre_visible": "Sonia",
+  "tipo_contacto": "comprador",
+  "etiqueta_crm": "agente-sonia",
+  "requiere_verificacion_direccion": false,
+  "campos": [
+    { "clave": "nombre", "etiqueta": "Nombre", "tipo": "texto", "descripcion": "Nombre de la persona" },
+    { "clave": "telefono", "etiqueta": "Teléfono", "tipo": "texto", "descripcion": "Teléfono en formato internacional. En WhatsApp se toma del canal; en Instagram se pregunta." },
+    { "clave": "email", "etiqueta": "Correo", "tipo": "texto", "descripcion": "Correo electrónico, solo si la persona lo ofrece" },
+    { "clave": "ciudad_interes", "etiqueta": "Ciudad de interés", "tipo": "texto" },
+    { "clave": "zonas_interes", "etiqueta": "Zonas de interés", "tipo": "texto" },
+    { "clave": "tipo_inmueble", "etiqueta": "Tipo de inmueble buscado", "tipo": "opcion", "opciones": ["apartamento", "casa", "lote", "local", "oficina", "bodega", "otro"] },
+    { "clave": "presupuesto_cop", "etiqueta": "Presupuesto aproximado (COP)", "tipo": "numero", "descripcion": "Presupuesto máximo en pesos colombianos. Si da un rango, usar el valor máximo." },
+    { "clave": "forma_pago", "etiqueta": "Forma de pago", "tipo": "opcion", "opciones": ["contado", "credito_hipotecario", "leasing", "subsidio", "mixto", "no_definido"] },
+    { "clave": "horizonte_compra_meses", "etiqueta": "Horizonte de compra (meses)", "tipo": "numero", "descripcion": "En cuántos meses espera comprar" },
+    { "clave": "intencion_compra", "etiqueta": "Intención concreta de compra", "tipo": "booleano", "descripcion": "true solo si expresa intención concreta de comprar, no solo curiosidad" },
+    { "clave": "propiedad_origen", "etiqueta": "Anuncio o publicación de origen", "tipo": "texto", "descripcion": "Inmueble o anuncio que motivó el contacto, si lo menciona" }
+  ],
+  "criterios": {
+    "campos_obligatorios": ["nombre", "telefono", "ciudad_interes", "tipo_inmueble", "presupuesto_cop", "horizonte_compra_meses", "intencion_compra"],
+    "reglas": [
+      { "id": "intencion_compra", "campo": "intencion_compra", "operador": "igual", "valor": true, "motivo": "No manifestó una intención concreta de compra" },
+      { "id": "mercado_ciudad", "campo": "ciudad_interes", "operador": "en", "valor": ["Bogotá"], "motivo": "Busca fuera del mercado atendido" },
+      { "id": "tipo_inmueble", "campo": "tipo_inmueble", "operador": "en", "valor": ["apartamento", "casa", "lote", "local", "oficina", "bodega"], "motivo": "El tipo de inmueble buscado no se atiende" },
+      { "id": "presupuesto_minimo", "campo": "presupuesto_cop", "operador": "mayor_o_igual", "valor": 200000000, "motivo": "El presupuesto está por debajo del umbral del portafolio" },
+      { "id": "horizonte_compra", "campo": "horizonte_compra_meses", "operador": "menor_o_igual", "valor": 6, "motivo": "El horizonte de compra supera el plazo atendido" }
+    ]
+  },
+  "pendientes": [
+    "Aprobar umbrales de Sonia (valores provisionales: presupuesto mínimo 200.000.000 COP, horizonte máximo 6 meses).",
+    "Decidir si la forma de pago es criterio de calificación (hoy solo se captura)."
+  ]
+}

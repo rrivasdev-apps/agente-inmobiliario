@@ -1,0 +1,21 @@
+{
+  "slug": "javier-nunez",
+  "nombre": "Equipo Javier Núñez",
+  "zona_horaria": "America/Bogota",
+  "mercado": "Bogotá",
+  "canales": [
+    { "tipo": "whatsapp", "identificador_externo": "PENDIENTE_WHATSAPP_PHONE_NUMBER_ID", "nombre": "WhatsApp principal" },
+    { "tipo": "instagram_dm", "identificador_externo": "PENDIENTE_INSTAGRAM_ACCOUNT_ID", "nombre": "Instagram DM" },
+    { "tipo": "instagram_comentario", "identificador_externo": "PENDIENTE_INSTAGRAM_ACCOUNT_ID", "nombre": "Instagram comentarios" }
+  ],
+  "integraciones": [
+    { "categoria": "crm", "proveedor": "gohighlevel", "configuracion": { "location_id": "PENDIENTE" }, "referencia_credencial": "n8n:ghl-javier-nunez" },
+    { "categoria": "geocodificacion", "proveedor": "google_maps", "configuracion": { "region": "co", "language": "es" }, "referencia_credencial": "n8n:google-maps" },
+    { "categoria": "llm", "proveedor": "openai", "configuracion": { "modelo": "PENDIENTE" }, "referencia_credencial": "n8n:openai" },
+    { "categoria": "mensajeria", "proveedor": "meta", "configuracion": {}, "referencia_credencial": "n8n:meta-javier-nunez" }
+  ],
+  "pendientes": [
+    "Confirmar si Facebook Messenger entra en Fase 1 (PRD §10).",
+    "Elegir proveedor de calendario: GoHighLevel, Calendly o Google Calendar (PRD §10). No se crea integración de calendario hasta decidirlo."
+  ]
+}

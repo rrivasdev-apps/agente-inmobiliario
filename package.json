@@ -1,0 +1,14 @@
+{
+  "name": "agente-inmobiliario",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agente de captación y calificación de leads inmobiliarios (Lucía y Sonia)",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test 'tests/**/*.test.js'",
+    "test:db": "scripts/test-db.sh",
+    "seed": "node scripts/generar-seed.js",
+    "seed:check": "node scripts/generar-seed.js --check"
+  }
+}
