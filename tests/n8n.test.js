@@ -164,7 +164,8 @@ test('extracción: describe los campos del rol y tolera fallas', () => {
   assert.equal(s.model, 'gpt-x');
   assert.match(s.messages[0].content, /relacion_inmueble \(una de: propietario, copropietario/);
   assert.equal(s.messages.at(-1).content, 'Hola, quiero vender');
-  assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana"}}')), { datos: { nombre: 'Ana' }, eventos: [] });
+  assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana"}}')), { datos: { nombre: 'Ana' }, seleccion: null, eventos: [] });
+  assert.doesNotMatch(s.messages[0].content, /seleccion/);
   assert.deepEqual(conv.interpretarExtraccion(openaiOk('no es json')).datos, {});
   assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":[1]}')).datos.constructor, Object);
 });
@@ -181,24 +182,60 @@ test('respuesta: plantillas fijas para decisiones sensibles', () => {
   assert.equal(conv.planificarRespuesta(ctxBase({ rol: null })).respuesta_fija.plantilla, 'seleccion_intencion');
   assert.equal(conv.planificarRespuesta(ctxBase({ evaluacion: { accion: 'archivar' } })).respuesta_fija.texto, 'No cumple.');
   assert.equal(conv.planificarRespuesta(ctxBase({ evaluacion: { accion: 'aclarar_direccion' } })).respuesta_fija.plantilla, 'direccion_ambigua');
-  const agenda = conv.planificarRespuesta(ctxBase({ evaluacion: { accion: 'ofrecer_agenda' } }));
-  assert.equal(agenda.respuesta_fija.plantilla, 'falla_agenda');
-  assert.equal(agenda.eventos[0].operacion, 'agendamiento');
 });
 
-test('respuesta: la plantilla de agenda o de no calificado se envía una sola vez', () => {
-  const agenda = conv.planificarRespuesta(ctxBase({ estado_anterior: 'calificado_pendiente_agendamiento', evaluacion: { accion: 'ofrecer_agenda' } }));
-  assert.equal(agenda.respuesta_fija, null);
-  assert.deepEqual(agenda.eventos, []);
-  assert.match(agenda.solicitud_llm.messages[0].content, /horario aún no está reservado/);
+test('respuesta: plantillas según el resultado del agendamiento', () => {
+  const plantillas = {
+    ...ctxBase().plantillas,
+    calificado: 'Elige: {{horarios_disponibles}}',
+    horario_agotado: 'Alternativas: {{horarios_alternativos}}',
+    confirmacion: 'Cita el {{fecha}} a las {{hora}}, zona horaria {{zona_horaria}}, mediante {{modalidad}}.',
+  };
+  const plan = (ra) => conv.planificarRespuesta(ctxBase({ plantillas, evaluacion: { accion: 'ofrecer_agenda' }, resultado_agenda: ra }));
+  assert.equal(plan({ tipo: 'ofrecidos', texto: '1. Lunes' }).respuesta_fija.texto, 'Elige: 1. Lunes');
+  assert.equal(plan({ tipo: 'agotado', texto: '1. Martes' }).respuesta_fija.texto, 'Alternativas: 1. Martes');
+  assert.equal(
+    plan({ tipo: 'confirmada', fecha: 'lunes 12 de octubre', hora: '9:00 a. m.', zona_horaria: 'America/Bogota', zona_texto: 'Colombia', modalidad: 'llamada' }).respuesta_fija.texto,
+    'Cita el lunes 12 de octubre a las 9:00 a. m., zona horaria Colombia, mediante llamada.',
+  );
+  assert.equal(plan({ tipo: 'error' }).respuesta_fija.plantilla, 'falla_agenda');
+  assert.equal(plan({ tipo: 'sin_disponibilidad' }).respuesta_fija.plantilla, 'falla_agenda');
+  assert.match(plan({ tipo: 'pendiente_confirmacion' }).solicitud_llm.messages[0].content, /debe confirmarla/);
+});
+
+test('respuesta: tras ofrecer horarios o calificar como no apto, responde el LLM sin repetir la plantilla', () => {
+  const pendiente = conv.planificarRespuesta(ctxBase({
+    conversacion: { id: 'v1', rol_codigo: 'lucia', identificado_como_virtual: true, agenda: { ofrecidos: ['x'], texto: '1. Lunes 9 am' } },
+    evaluacion: { accion: 'ofrecer_agenda' },
+  }));
+  assert.equal(pendiente.respuesta_fija, null);
+  assert.match(pendiente.solicitud_llm.messages[0].content, /número del horario[\s\S]*1\. Lunes 9 am/);
+
+  const conCita = conv.planificarRespuesta(ctxBase({
+    cita: { estado: 'confirmada', inicio: '2026-10-12T09:00:00-05:00', modalidad: 'llamada' },
+    evaluacion: { accion: 'ofrecer_agenda' },
+  }));
+  assert.match(conCita.solicitud_llm.messages[0].content, /ya tiene una cita confirmada/);
 
   const archivado = conv.planificarRespuesta(ctxBase({ estado_anterior: 'no_calificado', evaluacion: { accion: 'archivar' } }));
   assert.equal(archivado.respuesta_fija, null);
   assert.match(archivado.solicitud_llm.messages[0].content, /No expliques los criterios internos/);
 
-  // Primer turno tras calificar: sí va la plantilla.
-  const primera = conv.planificarRespuesta(ctxBase({ estado_anterior: 'informacion_incompleta', evaluacion: { accion: 'ofrecer_agenda' } }));
-  assert.equal(primera.respuesta_fija.plantilla, 'falla_agenda');
+  // Primer turno como no apto: sí va la plantilla.
+  const primera = conv.planificarRespuesta(ctxBase({ estado_anterior: 'informacion_incompleta', evaluacion: { accion: 'archivar' } }));
+  assert.equal(primera.respuesta_fija.plantilla, 'no_calificado');
+});
+
+test('extracción: con horarios ofrecidos pide la selección', () => {
+  const ctx = ctxBase({
+    conversacion: { id: 'v1', rol_codigo: 'lucia', identificado_como_virtual: true, agenda: { ofrecidos: ['a', 'b'], texto: '1. Lunes\n2. Martes' } },
+    integraciones: { llm: {}, calendario: { modalidades: { llamada: 'phone', videollamada: 'gmeet' } } },
+  });
+  const sistema = conv.solicitudExtraccion(ctx).messages[0].content;
+  assert.match(sistema, /1\. Lunes\n2\. Martes/);
+  assert.match(sistema, /una de: llamada, videollamada/);
+  const r = conv.interpretarExtraccion(openaiOk('{"datos":{},"seleccion":{"horario":2,"modalidad":"videollamada"}}'));
+  assert.deepEqual(r.seleccion, { horario: 2, modalidad: 'videollamada' });
 });
 
 test('respuesta redactada: estado del sistema, presentación y siguiente dato', () => {
@@ -303,4 +340,17 @@ test('flujo: los avisos de estado de Meta se descartan antes de los nodos Code',
   for (const n of flujo.nodes.filter((x) => x.type === 'n8n-nodes-base.code' && x.name !== 'Rechazar firma inválida')) {
     assert.equal(n.retryOnFail, true, n.name);
   }
+});
+
+test('flujo: el plan de agenda usa la selección extraída en el turno', async () => {
+  const ctx = ctxBase({
+    contacto: { id: 'c1', estado: 'calificado_pendiente_agendamiento', datos: {} },
+    conversacion: { id: 'v1', rol_codigo: 'lucia', agenda: { ofrecidos: ['2026-10-12T09:00:00-05:00', '2026-10-13T15:00:00-05:00'] } },
+    integraciones: { calendario: { modalidades: { llamada: 'phone', videollamada: 'gmeet' } } },
+    evaluacion: { resultado: 'calificado', accion: 'ofrecer_agenda' },
+  });
+  const salida = await ejecutarCode('Planificar agenda', { r: ctx }, { 'Registrar datos': { r: { seleccion: { horario: 2, modalidad: 'videollamada' } } } });
+  assert.deepEqual(salida.json.plan, { paso: 'reservar', inicio: '2026-10-13T15:00:00-05:00', modalidad: 'videollamada' });
+  const crear = flujo.nodes.find((n) => n.name === 'GHL: crear cita');
+  assert.equal(crear.retryOnFail, false, 'crear cita no se reintenta');
 });

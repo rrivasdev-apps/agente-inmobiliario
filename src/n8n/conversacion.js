@@ -24,7 +24,7 @@ function modelo(ctx) {
 }
 
 function rellenar(texto, valores) {
-  return String(texto).replace(/\{\{(\w+)\}\}/g, (todo, clave) => (valores[clave] !== undefined ? valores[clave] : todo));
+  return String(texto).replace(/\{\{(\w+)\}\}/g, (todo, clave) => (valores[clave] !== undefined && valores[clave] !== null ? valores[clave] : todo));
 }
 
 function mensajesHistorial(ctx) {
@@ -91,16 +91,33 @@ function describirCampo(c) {
   return `- ${c.clave} (${tipo}): ${c.etiqueta}${c.descripcion ? `. ${c.descripcion}` : ''}`;
 }
 
+function modalidades(ctx) {
+  const m = ctx.integraciones && ctx.integraciones.calendario && ctx.integraciones.calendario.modalidades;
+  return m && typeof m === 'object' ? Object.keys(m) : [];
+}
+
 function solicitudExtraccion(ctx) {
+  const agenda = ctx.conversacion.agenda || {};
+  const conHorarios = Array.isArray(agenda.ofrecidos) && agenda.ofrecidos.length > 0;
   const sistema = [
     'Extraes datos de una conversación inmobiliaria. No conversas.',
-    'Devuelve solo JSON con la forma {"datos": {...}}.',
+    conHorarios
+      ? 'Devuelve solo JSON con la forma {"datos": {...}, "seleccion": {...} | null}.'
+      : 'Devuelve solo JSON con la forma {"datos": {...}}.',
     'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',
     'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',
     'Campos:',
     ...ctx.rol.campos.map(describirCampo),
     '',
     `Datos ya registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,
+    ...(conHorarios ? [
+      '',
+      'Horarios que se le ofrecieron a la persona:',
+      agenda.texto || agenda.ofrecidos.join('\n'),
+      'Si en su ÚLTIMO mensaje la persona elige uno de estos horarios, incluye',
+      `"seleccion": {"horario": <número de la lista>, "modalidad": <una de: ${modalidades(ctx).join(', ') || 'llamada'}, o null si no la menciona>}.`,
+      'Si no eligió un horario de la lista, o es ambiguo, usa "seleccion": null.',
+    ] : []),
   ].join('\n');
 
   return {
@@ -115,10 +132,12 @@ function interpretarExtraccion(respuesta) {
   const r = jsonOpenAI(respuesta);
   if (r.error) {
     // Sin extracción el turno continúa con los datos que ya había (AC 46).
-    return { datos: {}, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };
+    return { datos: {}, seleccion: null, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };
   }
-  const datos = r.json && typeof r.json.datos === 'object' && !Array.isArray(r.json.datos) ? r.json.datos : {};
-  return { datos, eventos: [] };
+  const esObjeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const datos = r.json && esObjeto(r.json.datos) ? r.json.datos : {};
+  const seleccion = r.json && esObjeto(r.json.seleccion) ? r.json.seleccion : null;
+  return { datos, seleccion, eventos: [] };
 }
 
 // --- Evaluación ----------------------------------------------------------------------
@@ -149,17 +168,40 @@ function evaluarTurno(ctx, evaluarCalificacion) {
 const PLANTILLA_POR_ACCION = {
   archivar: 'no_calificado',
   aclarar_direccion: 'direccion_ambigua',
-  // Etapa 4: mientras el calendario no esté conectado, el contacto calificado
-  // queda registrado y el equipo agenda manualmente (ver evento).
-  ofrecer_agenda: 'falla_agenda',
 };
 
 // Estado del contacto en el que la plantilla de cada acción ya se envió. En
 // los turnos siguientes no se repite: el LLM responde con normalidad.
 const ESTADO_YA_INFORMADO = {
   archivar: 'no_calificado',
-  ofrecer_agenda: 'calificado_pendiente_agendamiento',
 };
+
+// Resultado del agendamiento en este turno (app.registrar_oferta / registrar_cita).
+const PLANTILLA_POR_RESULTADO_AGENDA = {
+  ofrecidos: 'calificado',
+  agotado: 'horario_agotado',
+  confirmada: 'confirmacion',
+  sin_disponibilidad: 'falla_agenda',
+  error: 'falla_agenda',
+};
+
+function instruccionAgenda(ctx) {
+  const agenda = ctx.conversacion.agenda || {};
+  const cita = ctx.cita;
+  if (ctx.resultado_agenda && ctx.resultado_agenda.tipo === 'pendiente_confirmacion') {
+    return 'La reserva se registró, pero el calendario debe confirmarla. Informa que la solicitud de cita quedó registrada y que recibirá la confirmación por este medio. No digas que está confirmada.';
+  }
+  if (cita && cita.estado === 'confirmada') {
+    return `La persona ya tiene una cita confirmada (${cita.inicio}, ${ctx.tenant.zona_horaria}, modalidad ${cita.modalidad}). Responde con cordialidad a lo que diga. No agendes otra cita ni cambies la existente; si quiere cambiarla, indica que el asesor la atenderá.`;
+  }
+  if (cita && cita.estado === 'seleccion_pendiente') {
+    return 'La solicitud de cita está pendiente de confirmación del calendario. Responde con cordialidad; no digas que está confirmada.';
+  }
+  if (Array.isArray(agenda.ofrecidos) && agenda.ofrecidos.length) {
+    return `La persona ya calificó y debe elegir un horario. Pídele que responda con el número del horario que prefiere de esta lista, sin inventar otros:\n${agenda.texto}`;
+  }
+  return 'La persona ya calificó. Indica que el siguiente paso es reservar con un asesor. No inventes horarios ni digas que la cita está confirmada.';
+}
 
 function instruccionSiguientePaso(ctx, ev) {
   const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));
@@ -175,7 +217,7 @@ function instruccionSiguientePaso(ctx, ev) {
     case 'reintentar_verificacion':
       return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';
     case 'ofrecer_agenda':
-      return 'La persona ya calificó y ya se le informó que su información quedó registrada y que el horario aún no está reservado. Responde con cordialidad a lo que diga. Si pregunta por la cita, explica que el horario aún no está reservado. No pidas más datos, no inventes horarios ni digas que la cita está confirmada.';
+      return instruccionAgenda(ctx);
     case 'archivar':
       return 'Ya se le informó a la persona que su caso no cumple las condiciones para continuar. Responde con cordialidad y brevedad a lo que diga. No expliques los criterios internos, no pidas más datos ni reabras la calificación.';
     default:
@@ -215,21 +257,31 @@ function solicitudRedaccion(ctx) {
  */
 function planificarRespuesta(ctx) {
   const p = ctx.plantillas || {};
-  const fija = (clave, eventos = []) => ({ respuesta_fija: { texto: p[clave], plantilla: clave }, solicitud_llm: null, eventos });
+  const fija = (clave, eventos = [], valores = {}) => ({ respuesta_fija: { texto: rellenar(p[clave], valores), plantilla: clave }, solicitud_llm: null, eventos });
 
   if (!ctx.rol) {
     if (p.seleccion_intencion) return fija('seleccion_intencion');
     return { respuesta_fija: { texto: RESPUESTA_SEGURA, plantilla: null }, solicitud_llm: null, eventos: [evento('error', null, 'planificar_respuesta', 'Falta la plantilla seleccion_intencion')] };
   }
 
+  const ra = ctx.resultado_agenda;
+  const claveAgenda = ra && PLANTILLA_POR_RESULTADO_AGENDA[ra.tipo];
+  if (claveAgenda && p[claveAgenda]) {
+    return fija(claveAgenda, [], {
+      horarios_disponibles: ra.texto,
+      horarios_alternativos: ra.texto,
+      fecha: ra.fecha,
+      hora: ra.hora,
+      zona_horaria: ra.zona_texto || ra.zona_horaria,
+      modalidad: ra.modalidad,
+    });
+  }
+
   const ev = ctx.evaluacion || {};
   const clave = PLANTILLA_POR_ACCION[ev.accion];
   const yaInformado = ESTADO_YA_INFORMADO[ev.accion] && ctx.estado_anterior === ESTADO_YA_INFORMADO[ev.accion];
   if (clave && p[clave] && !yaInformado) {
-    const eventos = ev.accion === 'ofrecer_agenda'
-      ? [evento('advertencia', null, 'agendamiento', 'Contacto calificado: el calendario aún no está conectado al flujo; agendar manualmente', { contacto_id: ctx.contacto.id })]
-      : [];
-    return fija(clave, eventos);
+    return fija(clave);
   }
   return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };
 }

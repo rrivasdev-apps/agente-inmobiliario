@@ -30,6 +30,8 @@ const MODULOS = {
   conversacion: () => modulo('conversacion', 'src/n8n/conversacion.js'),
   geocodificacion: () => modulo('geocodificacion', 'src/n8n/geocodificacion.js'),
   evaluar: () => modulo('evaluar', 'src/calificacion/evaluar.js'),
+  agenda: () => modulo('agenda', 'src/n8n/agenda.js'),
+  ghl: () => modulo('ghl', 'src/integraciones/gohighlevel.js'),
 };
 
 const B64 = "const b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');";
@@ -255,7 +257,7 @@ return { json: { r: $json.r, solicitud: conversacion.solicitudExtraccion($json.r
 openai('OpenAI: extraer datos', [x(14), -80], '$json.solicitud');
 code('Interpretar extracción', [x(15), -80], ['conversacion'],
   SALIDA_BD("$('Preparar extracción').item.json.r", 'conversacion.interpretarExtraccion($json)'));
-postgres('Registrar datos', [x(16), -80], llamada('registrar_datos'));
+postgres('Registrar datos', [x(16), -80], llamada('registrar_datos_y_seleccion'));
 si('¿Verificar dirección?', [x(17), -80], '$json.r.verificacion_pendiente === true');
 
 code('Preparar geocodificación', [x(18), -240], ['geocodificacion'], `
@@ -290,35 +292,132 @@ conectar('Google Maps: geocodificar', 'Clasificar dirección');
 conectar('Clasificar dirección', 'Registrar verificación');
 conectar('Registrar verificación', 'Evaluar calificación');
 conectar('Evaluar calificación', 'Guardar evaluación');
-conectar('Guardar evaluación', 'Planificar respuesta');
+conectar('Guardar evaluación', 'Planificar agenda');
+
+// --- Agendamiento con GoHighLevel -------------------------------------------------------
+// ofrecer:  upsert del contacto -> horarios libres -> app.registrar_oferta
+// reservar: crear cita -> app.registrar_cita (si el horario se ocupó, vuelve a ofrecer)
+
+// Las llamadas a GoHighLevel devuelven { statusCode, body } sin fallar en 4xx/5xx:
+// src/integraciones/gohighlevel.js clasifica el error.
+const ghlHttp = (nombre, pos, metodo, extra = {}) => {
+  const conCuerpo = metodo !== 'GET';
+  const n = http(nombre, pos, {
+    method: metodo,
+    url: '={{ ($json.solicitud || {}).url || "" }}',
+    authentication: 'genericCredentialType',
+    genericAuthType: 'httpHeaderAuth',
+    sendHeaders: true,
+    specifyHeaders: 'json',
+    jsonHeaders: '={{ JSON.stringify(($json.solicitud || {}).cabeceras || {}) }}',
+    ...(conCuerpo
+      ? { sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify(($json.solicitud || {}).cuerpo || {}) }}' }
+      : { sendQuery: true, specifyQuery: 'json', jsonQuery: '={{ JSON.stringify(($json.solicitud || {}).consulta || {}) }}' }),
+    options: { response: { response: { fullResponse: true, neverError: true } } },
+  }, 'Credencial Header Auth: GoHighLevel (Authorization: Bearer <Private Integration Token>)');
+  Object.assign(nodos.at(-1), extra);
+  return n;
+};
+
+const AG = 340; // fila de los nodos de agendamiento
+
+code('Planificar agenda', [x(24), -80], ['agenda'], `
+const seleccion = $('Registrar datos').item.json.r.seleccion;
+return { json: { r: $json.r, plan: agenda.planificarAgenda($json.r, seleccion) } };
+`);
+si('¿Agendar ahora?', [x(25), -80], '!!$json.plan.paso');
+si('¿Reservar?', [x(25), AG], "$json.plan.paso === 'reservar'");
+
+code('Preparar contacto GHL', [x(26), AG + 160], ['agenda', 'ghl'], `
+const s = agenda.solicitudContacto($json.r, ghl);
+return { json: { r: $json.r, solicitud: s.solicitud, error: s.error } };
+`);
+ghlHttp('GHL: registrar contacto', [x(27), AG + 160], 'POST');
+code('Preparar horarios', [x(28), AG + 160], ['agenda', 'ghl'], `
+// Llega del upsert del contacto o de una reserva cuyo horario ya se ocupó.
+let r, ghlId = null, error = null, motivo = 'ofrecidos';
+if ($json.r) {
+  r = $json.r;
+  ghlId = r.contacto.ghl_contact_id;
+  motivo = 'agotado';
+} else {
+  const previo = $('Preparar contacto GHL').item.json;
+  r = previo.r;
+  const c = previo.error ? { ghl_contact_id: null, error: previo.error } : agenda.interpretarContacto($json, ghl);
+  ghlId = c.ghl_contact_id;
+  error = c.error;
+}
+const s = error ? { solicitud: null, error } : agenda.solicitudHorarios(r, ghl);
+return { json: { r, ghl_contact_id: ghlId, motivo, solicitud: s.solicitud, error: s.error } };
+`);
+ghlHttp('GHL: horarios libres', [x(29), AG + 160], 'GET');
+code('Interpretar horarios', [x(30), AG + 160], ['agenda', 'ghl'], `
+const previo = $('Preparar horarios').item.json;
+const r = previo.r;
+const h = previo.error ? { ofrecidos: [], texto: '', error: previo.error } : agenda.interpretarHorarios($json, r, ghl);
+return { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64({ ghl_contact_id: previo.ghl_contact_id, motivo: previo.motivo, ...h }) } };
+`);
+postgres('Registrar oferta', [x(31), AG + 160], llamada('registrar_oferta'));
+
+code('Preparar reserva', [x(26), AG], ['agenda', 'ghl'], `
+const s = agenda.solicitudReserva($json.r, $json.plan, ghl);
+return { json: { r: $json.r, plan: $json.plan, solicitud: s.solicitud, error: s.error } };
+`);
+// Sin reintento automático: repetir un POST que sí llegó crearía otra cita.
+ghlHttp('GHL: crear cita', [x(27), AG], 'POST', { retryOnFail: false });
+code('Interpretar reserva', [x(28), AG], ['agenda', 'ghl'], `
+const previo = $('Preparar reserva').item.json;
+const r = previo.r;
+return { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64(agenda.interpretarReserva($json, r, previo.plan, previo, ghl)) } };
+`);
+postgres('Registrar cita', [x(29), AG], llamada('registrar_cita'));
+si('¿Horario agotado?', [x(30), AG], "$json.r.resultado_agenda && $json.r.resultado_agenda.tipo === 'agotado'");
+
+conectar('Planificar agenda', '¿Agendar ahora?');
+conectar('¿Agendar ahora?', '¿Reservar?', 0);
+conectar('¿Agendar ahora?', 'Planificar respuesta', 1);
+conectar('¿Reservar?', 'Preparar reserva', 0);
+conectar('¿Reservar?', 'Preparar contacto GHL', 1);
+conectar('Preparar contacto GHL', 'GHL: registrar contacto');
+conectar('GHL: registrar contacto', 'Preparar horarios');
+conectar('Preparar horarios', 'GHL: horarios libres');
+conectar('GHL: horarios libres', 'Interpretar horarios');
+conectar('Interpretar horarios', 'Registrar oferta');
+conectar('Registrar oferta', 'Planificar respuesta');
+conectar('Preparar reserva', 'GHL: crear cita');
+conectar('GHL: crear cita', 'Interpretar reserva');
+conectar('Interpretar reserva', 'Registrar cita');
+conectar('Registrar cita', '¿Horario agotado?');
+conectar('¿Horario agotado?', 'Preparar horarios', 0);
+conectar('¿Horario agotado?', 'Planificar respuesta', 1);
 
 // --- Respuesta y envío ------------------------------------------------------------------
 
-code('Planificar respuesta', [x(24), -80], ['conversacion'], `
+code('Planificar respuesta', [x(32), -80], ['conversacion'], `
 return { json: { r: $json.r, plan: conversacion.planificarRespuesta($json.r) } };
 `);
-si('¿Respuesta fija?', [x(25), -80], '!!$json.plan.respuesta_fija');
-openai('OpenAI: redactar respuesta', [x(26), -240], '$json.plan.solicitud_llm');
-code('Interpretar redacción', [x(27), -240], ['conversacion'], `
+si('¿Respuesta fija?', [x(33), -80], '!!$json.plan.respuesta_fija');
+openai('OpenAI: redactar respuesta', [x(34), -240], '$json.plan.solicitud_llm');
+code('Interpretar redacción', [x(35), -240], ['conversacion'], `
 const previo = $('Planificar respuesta').item.json;
 const redaccion = conversacion.interpretarRedaccion($json);
 return { json: { r: previo.r, respuesta: { ...redaccion, eventos: [...previo.plan.eventos, ...redaccion.eventos] } } };
 `);
 
-code('Preparar envío', [x(28), -80], ['meta'], `
+code('Preparar envío', [x(36), -80], ['meta'], `
 const respuesta = $json.respuesta || { ...$json.plan.respuesta_fija, eventos: $json.plan.eventos };
 return { json: { r: $json.r, respuesta, envio: meta.solicitudEnvio($json.r, respuesta.texto) } };
 `);
-si('¿WhatsApp?', [x(29), -80], "$json.r.canal.tipo === 'whatsapp'");
-graph('WhatsApp: enviar', [x(30), -240], 'Credencial Header Auth: Meta WhatsApp');
-graph('Instagram: enviar', [x(30), 80], 'Credencial Header Auth: Meta Instagram');
-code('Resultado del envío', [x(31), -80], ['meta'], `
+si('¿WhatsApp?', [x(37), -80], "$json.r.canal.tipo === 'whatsapp'");
+graph('WhatsApp: enviar', [x(38), -240], 'Credencial Header Auth: Meta WhatsApp');
+graph('Instagram: enviar', [x(38), 80], 'Credencial Header Auth: Meta Instagram');
+code('Resultado del envío', [x(39), -80], ['meta'], `
 const previo = $('Preparar envío').item.json;
 const envio = meta.interpretarEnvio($json);
 const p = { texto: previo.respuesta.texto, plantilla: previo.respuesta.plantilla, eventos: previo.respuesta.eventos, ...envio };
 return { json: { t: previo.r.tenant.id, c: previo.r.conversacion.id, payload_b64: b64(p) } };
 `);
-postgres('Registrar respuesta', [x(32), -80], llamada('registrar_respuesta'));
+postgres('Registrar respuesta', [x(40), -80], llamada('registrar_respuesta'));
 
 conectar('Planificar respuesta', '¿Respuesta fija?');
 conectar('¿Respuesta fija?', 'Preparar envío', 0);
