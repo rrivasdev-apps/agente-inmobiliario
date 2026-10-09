@@ -25,7 +25,7 @@
       "categoria": "crm",
       "proveedor": "gohighlevel",
       "configuracion": {
-        "location_id": "PENDIENTE"
+        "location_id": "z5G219RsqFPJWLnEe5ZX"
       },
       "referencia_credencial": "n8n:ghl-javier-nunez"
     },
@@ -33,8 +33,8 @@
       "categoria": "calendario",
       "proveedor": "gohighlevel_calendar",
       "configuracion": {
-        "location_id": "PENDIENTE",
-        "calendar_id": "PENDIENTE",
+        "location_id": "z5G219RsqFPJWLnEe5ZX",
+        "calendar_id": "iOKQp2oz67a9Bw7C2iY5",
         "duracion_minutos": null,
         "modalidades": {
           "llamada": "phone",
@@ -74,7 +74,6 @@
   ],
   "pendientes": [
     "Confirmar si Facebook Messenger entra en Fase 1 (PRD §10).",
-    "Crear el calendario en GoHighLevel y registrar calendar_id (ver docs/gohighlevel.md).",
     "Definir duración de la cita, horarios de atención y modalidades ofrecidas (valores provisionales: llamada, videollamada, presencial)."
   ]
 }
