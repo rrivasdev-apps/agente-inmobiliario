@@ -26,7 +26,10 @@ POST /webhook/agente-inmobiliario/meta     (responde 200 de inmediato)
   7. evaluar.js → app.guardar_evaluacion (auditoría + transición de estado)
   8. Respuesta: plantilla fija o redacción con OpenAI
        archivar → no_calificado · aclarar_direccion → direccion_ambigua
-       ofrecer_agenda → falla_agenda + evento "agendamiento" (Etapa 4 pendiente)
+  8b. Calificado → agendamiento con GoHighLevel (src/n8n/agenda.js):
+       sin horarios ofrecidos → upsert del contacto → horarios libres → app.registrar_oferta → plantilla calificado
+       eligió un horario de la lista → crear cita → app.registrar_cita → plantilla confirmacion
+       horario ocupado → nuevos horarios → plantilla horario_agotado · falla → falla_agenda (error_agendamiento)
   9. Envío por Graph API → app.registrar_respuesta (mensaje, AC 09, errores)
 ```
 
@@ -102,4 +105,6 @@ Un PUT reemplaza los nodos: hay que volver a asignar las credenciales que no est
 - Un solo juego de credenciales de Meta por flujo: para un segundo tenant con otra cuenta de Meta hay que guardar los tokens por tenant (Vault) y leerlos en el envío.
 - Mensajes que llegan casi al mismo tiempo del mismo contacto se procesan en paralelo; la BD evita duplicados, pero el orden de las respuestas no está garantizado.
 - La ventana de 24 h de WhatsApp (AC 45) no se revisa: el flujo solo responde a mensajes entrantes, que siempre están dentro de la ventana.
-- Agendamiento, GoHighLevel y entrega al asesor (Etapas 3 y 4) no están conectados: un contacto calificado recibe `falla_agenda` y queda un evento `agendamiento` para agendar manualmente.
+- Entrega y notificación al asesor (Etapa 4) no están conectadas: la cita confirmada queda enlazada al asesor si su `ghl_user_id` está en `app.asesores`, pero no se registra `entregas_asesor` ni se notifica.
+- Si la reserva no responde (timeout), se marca `error_agendamiento`; aún no se concilia con `GET /contacts/{id}/appointments` antes de reintentar (AC 40).
+- Las reservas hechas desde el enlace de GoHighLevel y los cambios hechos en GoHighLevel no llegan al flujo (falta el webhook de citas).

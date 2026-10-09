@@ -39,7 +39,7 @@ Detalle y configuración en [n8n.md](n8n.md). El LLM no llama herramientas: el f
 | `app.registrar_datos` | ambos | Fusiona en `contactos.datos` lo que extrajo el LLM. Solo acepta claves y tipos definidos en `roles_agente.campos`. |
 | `app.registrar_verificacion` | solo Lucía | Guarda el resultado de Google Maps en `app.verificaciones_direccion`. La BD rechaza la llamada desde Sonia (AC 20). |
 | `evaluar.js` + `app.guardar_evaluacion` | ambos | Califica con los criterios del tenant, guarda en `app.evaluaciones_calificacion` y aplica la transición de estado. |
-| Consultar disponibilidad y reservar | ambos | Etapa 4: módulo `src/integraciones/gohighlevel.js`, aún no conectado al flujo. |
+| `app.registrar_oferta` / `app.registrar_cita` | ambos | Upsert del contacto, horarios libres y reserva en GoHighLevel (`src/n8n/agenda.js` + `src/integraciones/gohighlevel.js`). Solo se reserva un horario ofrecido (AC 30). |
 
 ### Criterio para clasificar una dirección (Google Maps Geocoding)
 
