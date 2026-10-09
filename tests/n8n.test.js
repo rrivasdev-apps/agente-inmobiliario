@@ -7,7 +7,7 @@ const meta = require('../src/n8n/meta');
 const geo = require('../src/n8n/geocodificacion');
 const conv = require('../src/n8n/conversacion');
 const { evaluarCalificacion } = require('../src/calificacion/evaluar');
-const { flujo } = require('../scripts/generar-n8n');
+const { flujo, EXPRESION_TRAE_MENSAJES } = require('../scripts/generar-n8n');
 
 const lucia = require('../config/tenants/javier-nunez/roles/lucia.json');
 
@@ -285,4 +285,22 @@ test('flujo: de la redacción al envío', async () => {
   assert.deepEqual(decodificar(resultadoEnvio.payload_b64), {
     texto: 'Hola, soy Lucía. ¿Cuál es tu nombre?', plantilla: null, eventos: [], enviado: true, id_externo: 'wamid.out', error: null,
   });
+});
+
+test('flujo: los avisos de estado de Meta se descartan antes de los nodos Code', () => {
+  const trae = new Function('$json', `return ${EXPRESION_TRAE_MENSAJES};`);
+  const wa = (value) => ({ body: { object: 'whatsapp_business_account', entry: [{ changes: [{ field: 'messages', value }] }] } });
+  assert.equal(trae(wa({ messages: [{ id: 'w1' }] })), true);
+  assert.equal(trae(wa({ statuses: [{ status: 'read' }] })), false);
+  assert.equal(trae({ body: { object: 'instagram', entry: [{ messaging: [{ message: { mid: 'm1', text: 'hola' } }] }] } }), true);
+  assert.equal(trae({ body: { object: 'instagram', entry: [{ messaging: [{ message: { mid: 'm2', is_echo: true } }, { read: {} }] }] } }), false);
+  assert.equal(trae({ body: { object: 'instagram', entry: [{ changes: [{ field: 'comments', value: { id: 'c1' } }] }] } }), true);
+  assert.equal(trae({ body: {} }), false);
+  assert.equal(trae({}), false);
+
+  const destinos = flujo.connections['Meta: eventos (POST)'].main[0].map((d) => d.node);
+  assert.deepEqual(destinos, ['¿Trae mensajes?']);
+  for (const n of flujo.nodes.filter((x) => x.type === 'n8n-nodes-base.code' && x.name !== 'Rechazar firma inválida')) {
+    assert.equal(n.retryOnFail, true, n.name);
+  }
 });

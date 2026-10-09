@@ -67,10 +67,14 @@ function conectar(desde, hacia, salida = 0) {
   conexiones[desde].main[salida].push({ node: hacia, type: 'main', index: 0 });
 }
 
+// n8n Cloud ejecuta los nodos Code en un "task runner" que a veces no responde
+// a tiempo; el código es determinista, así que reintentar es seguro.
+const REINTENTOS_CODE = { retryOnFail: true, maxTries: 3, waitBetweenTries: 2000 };
+
 const code = (nombre, pos, modulos, cuerpo, porItem = true, nota) => nodo(
   nombre, 'n8n-nodes-base.code', 2, pos,
   { ...(porItem ? { mode: 'runOnceForEachItem' } : {}), jsCode: codigo(modulos, cuerpo) },
-  nota ? { notes: nota, notesInFlow: true } : {},
+  { ...REINTENTOS_CODE, ...(nota ? { notes: nota, notesInFlow: true } : {}) },
 );
 
 const postgres = (nombre, pos, consulta) => nodo(
@@ -165,6 +169,12 @@ nodo('Meta: eventos (POST)', 'n8n-nodes-base.webhook', 2, [x(0), 0], {
   httpMethod: 'POST', path: RUTA_WEBHOOK, responseMode: 'onReceived', options: { rawBody: true },
 }, { webhookId: 'b7c4e2a0-6f1d-4c3e-9a51-2d8f0e6b1c02' });
 
+// Meta envía varios avisos de estado (sent, delivered, read) por cada respuesta.
+// Se descartan aquí, con una expresión y sin nodos Code, para no saturar el
+// task runner de n8n Cloud. normalizarWebhook hace el filtro fino después.
+const EXPRESION_TRAE_MENSAJES = "(($json.body || {}).entry || []).some(e => (e.changes || []).some(c => c.field === 'comments' || ((c.value || {}).messages || []).length > 0) || (e.messaging || []).some(m => !!m.message && !m.message.is_echo))";
+si('¿Trae mensajes?', [x(0), 200], EXPRESION_TRAE_MENSAJES);
+
 code('Preparar firma', [x(1), 0], ['meta'], `
 const entrada = $input.first();
 let crudo;
@@ -184,6 +194,7 @@ si('¿Firma válida?', [x(3), 0], '$json.valida === true');
 code('Rechazar firma inválida', [x(4), 160], [], `
 throw new Error('Webhook de Meta con firma inválida o sin secreto configurado en Vault: se descarta.');
 `, false);
+Object.assign(nodos.at(-1), { retryOnFail: false });
 
 code('Normalizar eventos de Meta', [x(4), 0], ['meta'], `
 const cuerpo = $('Meta: eventos (POST)').first().json.body;
@@ -200,7 +211,8 @@ return { json: { envio: meta.solicitudRespuestaComentario($json.r.comentario_id,
 `);
 graph('Instagram: responder comentario', [x(9), 240], 'Credencial Header Auth: Meta Instagram');
 
-conectar('Meta: eventos (POST)', 'Preparar firma');
+conectar('Meta: eventos (POST)', '¿Trae mensajes?');
+conectar('¿Trae mensajes?', 'Preparar firma', 0);
 conectar('Preparar firma', 'Verificar firma');
 conectar('Verificar firma', '¿Firma válida?');
 conectar('¿Firma válida?', 'Normalizar eventos de Meta', 0);
@@ -346,4 +358,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { flujo };
+module.exports = { flujo, EXPRESION_TRAE_MENSAJES };
