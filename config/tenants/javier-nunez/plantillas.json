@@ -12,5 +12,6 @@
   {"clave": "horario_agotado", "rol": null, "texto": "Ese horario ya no se encuentra disponible. Puedo ofrecerte estas alternativas: {{horarios_alternativos}}."},
   {"clave": "falla_agenda", "rol": null, "texto": "No fue posible confirmar la cita en este momento. Tu información quedó registrada, pero el horario aún no está reservado."},
   {"clave": "no_calificado", "rol": null, "texto": "Gracias por compartir la información. En este momento tu caso no cumple las condiciones necesarias para continuar con el proceso."},
+  {"clave": "no_calificado_nutricion", "rol": null, "texto": "Gracias por compartir la información. Por ahora no podemos avanzar con una cita, pero quedas registrado y te compartiremos información útil para tu proceso. Cuando quieras retomar, escríbenos por aquí."},
   {"clave": "prioridad_baja", "rol": null, "texto": "Gracias, ya tenemos la información que necesitamos. Como aún no tienes prisa, por ahora no agendaremos una cita: quedas registrado y te compartiremos información útil para tu proceso. Cuando quieras avanzar, escríbenos por aquí."}
 ]

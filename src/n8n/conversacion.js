@@ -27,6 +27,47 @@ function rellenar(texto, valores) {
   return String(texto).replace(/\{\{(\w+)\}\}/g, (todo, clave) => (valores[clave] !== undefined && valores[clave] !== null ? valores[clave] : todo));
 }
 
+// --- Nombre --------------------------------------------------------------------------
+
+const NOMBRES_GENERICOS = new Set([
+  'cliente', 'usuario', 'contacto', 'vip', 'admin', 'info', 'ventas', 'inmobiliaria', 'test', 'prueba',
+  'whatsapp', 'null', 'undefined', 'sin', 'nombre',
+]);
+const TRATAMIENTOS = new Set(['sr', 'sra', 'srta', 'señor', 'senor', 'señora', 'senora', 'don', 'doña', 'dona', 'dr', 'dra', 'ing', 'lic', 'arq']);
+
+const capitalizar = (p) => p.charAt(0).toLocaleUpperCase('es') + p.slice(1).toLocaleLowerCase('es');
+
+/**
+ * Primer nombre utilizable de un nombre (p. ej. el del perfil de WhatsApp), o
+ * null si no parece el nombre de una persona: vacío, con números, genérico,
+ * solo iniciales o sin letras. Omite tratamientos ("Dr.", "Sra.").
+ */
+function primerNombre(nombre) {
+  if (typeof nombre !== 'string' || /\d/.test(nombre)) return null;
+  const palabras = nombre.replace(/[^\p{L}\s'.-]/gu, ' ').split(/\s+/).filter(Boolean);
+  if (palabras.some((w) => NOMBRES_GENERICOS.has(w.toLowerCase()))) return null;
+  const sinTratamiento = palabras.filter((w, i) => i > 0 || !TRATAMIENTOS.has(w.toLowerCase().replace(/\.$/, '')));
+  const resto = sinTratamiento.length < palabras.length ? sinTratamiento : palabras;
+  const primera = (resto[0] || '').replace(/^[.'-]+|[.'-]+$/g, '');
+  if (primera.includes('.') || primera.replace(/[^\p{L}]/gu, '').length < 2) return null;
+  if (TRATAMIENTOS.has(primera.toLowerCase())) return null;
+  return primera.split('-').map(capitalizar).join('-');
+}
+
+function nombreParaDirigirse(ctx) {
+  return primerNombre((ctx.contacto.datos || {}).nombre) || primerNombre(ctx.contacto.nombre);
+}
+
+function valoresPrompt(ctx) {
+  const comercial = (ctx.tenant.parametros && ctx.tenant.parametros.comercial) || {};
+  return {
+    nombre_tenant: ctx.tenant.nombre,
+    canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,
+    asesor: comercial.asesor || 'un asesor',
+    argumento_exclusividad: comercial.argumento_exclusividad || '',
+  };
+}
+
 function mensajesHistorial(ctx) {
   return (ctx.historial || [])
     .slice(-MENSAJES_EN_CONTEXTO)
@@ -110,6 +151,9 @@ function solicitudExtraccion(ctx) {
     ...ctx.rol.campos.map(describirCampo),
     '',
     `Datos ya registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,
+    ...(!(ctx.contacto.datos || {}).nombre && primerNombre(ctx.contacto.nombre)
+      ? [`Nombre del perfil de ${NOMBRE_CANAL[ctx.canal.tipo] || 'la red'}: "${ctx.contacto.nombre}". Si la persona no dio otro nombre ni lo contradijo, úsalo como "nombre".`]
+      : []),
     ...(conHorarios ? [
       '',
       'Horarios que se le ofrecieron a la persona:',
@@ -179,6 +223,11 @@ const ESTADO_YA_INFORMADO = {
   nutrir: 'nutricion',
 };
 
+function nutreNoCalificados(ctx) {
+  const n = ctx.tenant.parametros && ctx.tenant.parametros.nutricion;
+  return Boolean(n && n.incluir_no_calificados);
+}
+
 /** Dossier del rol en los parámetros del tenant: { url, nombre_archivo } o null. */
 function dossier(ctx) {
   const d = ctx.tenant.parametros && ctx.tenant.parametros.dossier && ctx.tenant.parametros.dossier[ctx.rol.codigo];
@@ -238,10 +287,8 @@ function instruccionSiguientePaso(ctx, ev) {
 
 function solicitudRedaccion(ctx) {
   const ev = ctx.evaluacion || {};
-  const sistema = rellenar(ctx.rol.prompt_sistema, {
-    nombre_tenant: ctx.tenant.nombre,
-    canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,
-  });
+  const sistema = rellenar(ctx.rol.prompt_sistema, valoresPrompt(ctx));
+  const nombre = nombreParaDirigirse(ctx);
   const estado = [
     '## Estado de la conversación (lo calcula el sistema)',
     'El sistema ya registró los datos y evaluó la calificación en este turno; tú solo redactas el siguiente mensaje.',
@@ -249,6 +296,9 @@ function solicitudRedaccion(ctx) {
     ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio
       ? null
       : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: "${ctx.plantillas.inicio}"`,
+    nombre
+      ? `- Dirígete a la persona como "${nombre}". No le preguntes su nombre.`
+      : '- Aún no sabes cómo se llama la persona: si el siguiente dato no es otro, pregúntale su nombre de forma natural.',
     `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,
     `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,
     `- Siguiente paso: ${instruccionSiguientePaso(ctx, ev)}`,
@@ -292,9 +342,10 @@ function planificarRespuesta(ctx) {
   const clave = PLANTILLA_POR_ACCION[ev.accion];
   const yaInformado = ESTADO_YA_INFORMADO[ev.accion] && ctx.estado_anterior === ESTADO_YA_INFORMADO[ev.accion];
   if (clave && p[clave] && !yaInformado) {
-    const plan = fija(clave);
-    // Prioridad baja: si el rol tiene dossier configurado, se adjunta.
-    if (ev.accion === 'nutrir' && dossier(ctx)) plan.respuesta_fija.documento = dossier(ctx);
+    // No calificados: si el tenant los nutre, mensaje cordial + dossier en vez de solo "no cumples".
+    const nutrirNoCalificado = ev.accion === 'archivar' && nutreNoCalificados(ctx) && p.no_calificado_nutricion;
+    const plan = fija(nutrirNoCalificado ? 'no_calificado_nutricion' : clave);
+    if ((ev.accion === 'nutrir' || nutrirNoCalificado) && dossier(ctx)) plan.respuesta_fija.documento = dossier(ctx);
     return plan;
   }
   return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };
@@ -310,6 +361,7 @@ function interpretarRedaccion(respuesta) {
 
 module.exports = {
   RESPUESTA_SEGURA,
+  primerNombre,
   rellenar,
   solicitudClasificacion,
   interpretarClasificacion,

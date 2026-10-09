@@ -425,3 +425,56 @@ test('flujo de reporte: programado semanal en hora de Bogotá y conexiones váli
   // El flujo principal no comparte nodos con el de reporte.
   assert.ok(!flujo.nodes.some((n) => n.name === 'Armar correo'));
 });
+
+// --- Estilo, nombre, objeciones y nutrición de no calificados ---------------------------
+
+test('nombre: solo nombres de persona; primer nombre sin tratamientos', () => {
+  const casos = [
+    ['Juan Rojas', 'Juan'], ['ana', 'Ana'], ['Dr. Andrés Pérez', 'Andrés'], ['Lucía-Fernanda Gómez', 'Lucía-Fernanda'],
+    ['📱 Carlos 🏠', 'Carlos'], ['Cliente VIP', null], ['J.P.', null], ['123', null], ['Ventas Bogotá', null], ['', null], [null, null],
+  ];
+  for (const [entrada, esperado] of casos) assert.equal(conv.primerNombre(entrada), esperado, String(entrada));
+});
+
+test('nombre del perfil: se propone al extractor y se usa en la respuesta', () => {
+  const ctx = ctxBase({ contacto: { ...ctxBase().contacto, nombre: 'Juan Rojas', datos: { telefono: '+573001112233' } } });
+  assert.match(conv.solicitudExtraccion(ctx).messages[0].content, /Nombre del perfil de WhatsApp: "Juan Rojas"/);
+  const plan = conv.planificarRespuesta({ ...ctx, evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['operacion'] } });
+  assert.match(plan.solicitud_llm.messages[0].content, /Dirígete a la persona como "Juan"\. No le preguntes su nombre/);
+
+  const invalido = ctxBase({ contacto: { ...ctxBase().contacto, nombre: 'Cliente 01', datos: {} } });
+  assert.doesNotMatch(conv.solicitudExtraccion(invalido).messages[0].content, /Nombre del perfil/);
+  const plan2 = conv.planificarRespuesta({ ...invalido, evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['nombre'] } });
+  assert.match(plan2.solicitud_llm.messages[0].content, /Aún no sabes cómo se llama/);
+
+  // El nombre que dio la persona prevalece sobre el del perfil.
+  const dado = ctxBase({ contacto: { ...ctxBase().contacto, nombre: 'Juan Rojas', datos: { nombre: 'Juanita' } } });
+  assert.match(conv.planificarRespuesta({ ...dado, evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['x'] } }).solicitud_llm.messages[0].content, /como "Juanita"/);
+});
+
+test('objeciones: asesor y argumento de exclusividad salen de los parámetros', () => {
+  const prompt = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'prompts', 'comun.md'), 'utf8');
+  const ctx = ctxBase({
+    rol: { ...ctxBase().rol, prompt_sistema: prompt },
+    tenant: { ...ctxBase().tenant, parametros },
+    evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['x'] },
+  });
+  const sistema = conv.planificarRespuesta(ctx).solicitud_llm.messages[0].content;
+  assert.match(sistema, /los revisa Javier en la reunión/);
+  assert.match(sistema, /exclusividad con JNdelT Real Estate/);
+  assert.match(sistema, /Sin emojis/);
+  assert.doesNotMatch(sistema, /\{\{/, 'sin marcadores sin reemplazar');
+});
+
+test('no calificado: con nutrición activa recibe mensaje cordial y dossier una sola vez', () => {
+  const plantillas = { ...ctxBase().plantillas, no_calificado_nutricion: 'Quedas registrado.' };
+  const tenant = { ...ctxBase().tenant, parametros: { nutricion: { incluir_no_calificados: true }, dossier: { lucia: { url: 'https://x.co/d.pdf' } } } };
+  const primera = conv.planificarRespuesta(ctxBase({ plantillas, tenant, evaluacion: { accion: 'archivar' }, estado_anterior: 'informacion_incompleta' }));
+  assert.equal(primera.respuesta_fija.plantilla, 'no_calificado_nutricion');
+  assert.equal(primera.respuesta_fija.documento.url, 'https://x.co/d.pdf');
+  assert.equal(conv.planificarRespuesta(ctxBase({ plantillas, tenant, evaluacion: { accion: 'archivar' }, estado_anterior: 'no_calificado' })).respuesta_fija, null);
+
+  const sinNutricion = conv.planificarRespuesta(ctxBase({ plantillas, evaluacion: { accion: 'archivar' } }));
+  assert.equal(sinNutricion.respuesta_fija.plantilla, 'no_calificado');
+  assert.equal(sinNutricion.respuesta_fija.documento, undefined);
+});

@@ -30,10 +30,17 @@
       "lucia": null,
       "sonia": null
     },
+    "nutricion": {
+      "incluir_no_calificados": true
+    },
     "reporte_no_calificados": {
       "activo": true,
       "dias": 7,
       "destinatarios": []
+    },
+    "comercial": {
+      "asesor": "Javier",
+      "argumento_exclusividad": "Comenta que trabajar la propiedad en exclusividad con JNdelT Real Estate permite cuidarla mejor y que en una conversación breve con Javier pueden mostrarle las diferencias."
     }
   },
   "canales": [
