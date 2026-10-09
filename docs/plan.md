@@ -39,17 +39,25 @@
 |---|---|---|
 | Calendario: GoHighLevel nativo | 7 oct 2026 | Ver [gohighlevel.md](gohighlevel.md) |
 | Flujo determinista en lugar de agente con herramientas | 7 oct 2026 | El LLM clasifica, extrae y redacta; los pasos los ejecuta n8n. Ver [n8n.md](n8n.md) |
+| Calificación mixta | 9 oct 2026 | Criterios mínimos y luego prioridad por plazo: alta se agenda; baja queda en `nutricion` y no se agenda |
+| Arriendo | 9 oct 2026 | Lucía: vende u ofrece en arriendo. Sonia: compra o busca arriendo (campo `operacion`) |
+| Dossier para prioridad baja | 9 oct 2026 | Envío automático por WhatsApp cuando exista (`parametros.dossier`) |
+| Reporte semanal de no calificados | 9 oct 2026 | Correo los lunes al administrador con motivo de descalificación y leads de prioridad baja |
+| Presentación como asistente virtual | 9 oct 2026 | Se mantiene (AC 09) |
+| Marca | 9 oct 2026 | "JNdelT Real Estate" (puede cambiar: `tenant.json` → `nombre`) |
+| Asesores | 9 oct 2026 | Round Robin del calendario de GoHighLevel; al inicio solo Javier |
+| Todo umbral es parámetro | 9 oct 2026 | `config/tenants/<tenant>/tenant.json` → `parametros` (ver [configuracion.md](configuracion.md)) |
 
 ## Decisiones pendientes que bloquean etapas
 
 | Decisión (PRD §10) | Bloquea | Valor provisional en el repo |
 |---|---|---|
 | Modalidades, duración, horarios, zona horaria | Etapa 4 | Zona `America/Bogota` |
-| Asignación y distribución de asesores | Etapa 4 | Round-robin del calendario de GoHighLevel (por confirmar) |
 | Facebook en Fase 1 | Etapa 2 | Tipo de canal creado, sin canal configurado |
 | Relación válida con la propiedad | Aceptación | propietario, copropietario, apoderado |
-| Ciudades, zonas y tipos de inmueble | Aceptación | Bogotá; todos los tipos salvo "otro" |
-| Umbrales de Sonia | Aceptación | ≥ 200.000.000 COP; ≤ 6 meses |
+| Ciudades y tipos de inmueble (`parametros.cobertura`) | Aceptación | Bogotá; todos los tipos salvo "otro" |
+| Umbrales (`parametros.compra`, `arriendo`, `prioridad`) | Aceptación | Compra ≥ 200.000.000 COP; canon sin mínimo; prioridad alta ≤ 3 meses |
+| Dossier y destinatarios del reporte | Nutrición / reporte | Sin configurar |
 | Política de duplicados en GHL | Etapa 3 | Teléfono, luego correo |
 | Etiquetas, etapas y campos en GHL | Etapa 3 | `agente-lucia`, `agente-sonia` |
 | Plantillas aprobadas por Meta | Etapa 2 | `pendiente_agenda` marcada como requerida |

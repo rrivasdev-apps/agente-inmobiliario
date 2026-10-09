@@ -46,3 +46,4 @@ npm run n8n:check   # verifica que el flujo está actualizado
 - [Plan y decisiones pendientes](docs/plan.md)
 - [GoHighLevel: CRM y calendario](docs/gohighlevel.md)
 - [Flujo de n8n y configuración](docs/n8n.md)
+- [Parámetros por tenant y calificación](docs/configuracion.md)

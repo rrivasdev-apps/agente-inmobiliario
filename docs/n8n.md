@@ -88,17 +88,25 @@ En la app de Meta (WhatsApp → Configuración y Instagram → Webhooks):
 
 Activar el flujo **antes** de verificar el webhook (n8n solo atiende la URL de producción con el flujo activo).
 
+## Reporte semanal de no calificados
+
+Flujo **Agente inmobiliario: reporte semanal de no calificados** (id `rqPgSXmlwJvlb5yA`, `n8n/reporte-no-calificados.json`), creado **inactivo**. Los lunes a las 7:50 (hora de Bogotá) consulta `app.reportes_no_calificados()` y envía por Gmail, a `parametros.reporte_no_calificados.destinatarios` de cada tenant, dos tablas de los últimos `dias`:
+
+- **No calificados**, con el motivo de descalificación.
+- **Prioridad baja** (en nutrición, no se agendaron), con el plazo y el estado actual.
+
+Para activarlo: asignar una credencial Gmail (OAuth2) al nodo **Enviar reporte**, poner el correo del administrador en los parámetros y activar el flujo. El nodo **Ejecutar ahora** permite probarlo a mano.
+
 ## Publicar cambios
 
 ```bash
-npm run n8n            # regenera n8n/agente-inmobiliario.json
-npm test               # incluye pruebas de los nodos Code generados
-curl -X PUT "https://rersn8n.app.n8n.cloud/api/v1/workflows/kIdhAu7QlHJ3IL3h" \
-  -H "X-N8N-API-KEY: $N8N_API_KEY" -H "Content-Type: application/json" \
-  -d @n8n/agente-inmobiliario.json
+npm run seed           # regenera supabase/seed.sql (idempotente: se puede aplicar sobre la BD con datos)
+npm run n8n            # regenera los flujos de n8n/
+npm test && npm run test:db
 ```
 
-Un PUT reemplaza los nodos: hay que volver a asignar las credenciales que no estén en el JSON.
+- Configuración: aplicar `supabase/seed.sql` en Supabase (upserts; no duplica).
+- Flujos: `PUT /api/v1/workflows/<id>` con el JSON. Un PUT reemplaza los nodos: copiar las credenciales del flujo publicado a los nodos del JSON antes de enviarlo.
 
 ## Límites conocidos
 
