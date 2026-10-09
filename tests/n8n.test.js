@@ -186,6 +186,21 @@ test('respuesta: plantillas fijas para decisiones sensibles', () => {
   assert.equal(agenda.eventos[0].operacion, 'agendamiento');
 });
 
+test('respuesta: la plantilla de agenda o de no calificado se envía una sola vez', () => {
+  const agenda = conv.planificarRespuesta(ctxBase({ estado_anterior: 'calificado_pendiente_agendamiento', evaluacion: { accion: 'ofrecer_agenda' } }));
+  assert.equal(agenda.respuesta_fija, null);
+  assert.deepEqual(agenda.eventos, []);
+  assert.match(agenda.solicitud_llm.messages[0].content, /horario aún no está reservado/);
+
+  const archivado = conv.planificarRespuesta(ctxBase({ estado_anterior: 'no_calificado', evaluacion: { accion: 'archivar' } }));
+  assert.equal(archivado.respuesta_fija, null);
+  assert.match(archivado.solicitud_llm.messages[0].content, /No expliques los criterios internos/);
+
+  // Primer turno tras calificar: sí va la plantilla.
+  const primera = conv.planificarRespuesta(ctxBase({ estado_anterior: 'informacion_incompleta', evaluacion: { accion: 'ofrecer_agenda' } }));
+  assert.equal(primera.respuesta_fija.plantilla, 'falla_agenda');
+});
+
 test('respuesta redactada: estado del sistema, presentación y siguiente dato', () => {
   const plan = conv.planificarRespuesta(ctxBase({ evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['relacion_inmueble', 'ciudad'] } }));
   assert.equal(plan.respuesta_fija, null);

@@ -154,6 +154,13 @@ const PLANTILLA_POR_ACCION = {
   ofrecer_agenda: 'falla_agenda',
 };
 
+// Estado del contacto en el que la plantilla de cada acción ya se envió. En
+// los turnos siguientes no se repite: el LLM responde con normalidad.
+const ESTADO_YA_INFORMADO = {
+  archivar: 'no_calificado',
+  ofrecer_agenda: 'calificado_pendiente_agendamiento',
+};
+
 function instruccionSiguientePaso(ctx, ev) {
   const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));
   switch (ev.accion) {
@@ -167,6 +174,10 @@ function instruccionSiguientePaso(ctx, ev) {
       return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';
     case 'reintentar_verificacion':
       return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';
+    case 'ofrecer_agenda':
+      return 'La persona ya calificó y ya se le informó que su información quedó registrada y que el horario aún no está reservado. Responde con cordialidad a lo que diga. Si pregunta por la cita, explica que el horario aún no está reservado. No pidas más datos, no inventes horarios ni digas que la cita está confirmada.';
+    case 'archivar':
+      return 'Ya se le informó a la persona que su caso no cumple las condiciones para continuar. Responde con cordialidad y brevedad a lo que diga. No expliques los criterios internos, no pidas más datos ni reabras la calificación.';
     default:
       return 'Continúa la conversación según tus reglas.';
   }
@@ -213,7 +224,8 @@ function planificarRespuesta(ctx) {
 
   const ev = ctx.evaluacion || {};
   const clave = PLANTILLA_POR_ACCION[ev.accion];
-  if (clave && p[clave]) {
+  const yaInformado = ESTADO_YA_INFORMADO[ev.accion] && ctx.estado_anterior === ESTADO_YA_INFORMADO[ev.accion];
+  if (clave && p[clave] && !yaInformado) {
     const eventos = ev.accion === 'ofrecer_agenda'
       ? [evento('advertencia', null, 'agendamiento', 'Contacto calificado: el calendario aún no está conectado al flujo; agendar manualmente', { contacto_id: ctx.contacto.id })]
       : [];
