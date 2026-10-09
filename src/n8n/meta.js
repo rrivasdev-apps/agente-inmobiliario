@@ -100,8 +100,25 @@ function normalizarWebhook(cuerpo) {
   return salida.filter((m) => m.identificador_canal && m.id_externo && m.remitente_id);
 }
 
-/** Solicitud a la Graph API para responder por el canal de la conversación. */
-function solicitudEnvio(ctx, texto) {
+/**
+ * Solicitud a la Graph API para responder por el canal de la conversación.
+ * `documento` ({ url, nombre_archivo }) se envía en WhatsApp como archivo con
+ * el texto como descripción; en Instagram, como enlace al final del texto.
+ */
+function solicitudEnvio(ctx, texto, documento) {
+  if (ctx.canal.tipo === 'whatsapp' && documento) {
+    return {
+      url: `${GRAPH}/${encodeURIComponent(ctx.canal.identificador_externo)}/messages`,
+      cuerpo: {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: String(ctx.contacto.telefono || '').replace(/\D/g, ''),
+        type: 'document',
+        document: { link: documento.url, filename: documento.nombre_archivo, caption: texto },
+      },
+    };
+  }
+  if (documento) texto = `${texto}\n\n${documento.url}`;
   if (ctx.canal.tipo === 'whatsapp') {
     return {
       url: `${GRAPH}/${encodeURIComponent(ctx.canal.identificador_externo)}/messages`,

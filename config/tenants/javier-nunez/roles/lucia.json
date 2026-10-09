@@ -8,24 +8,26 @@
     { "clave": "nombre", "etiqueta": "Nombre", "tipo": "texto", "descripcion": "Nombre de la persona" },
     { "clave": "telefono", "etiqueta": "Teléfono", "tipo": "texto", "descripcion": "Teléfono en formato internacional. En WhatsApp se toma del canal; en Instagram se pregunta." },
     { "clave": "email", "etiqueta": "Correo", "tipo": "texto", "descripcion": "Correo electrónico, solo si la persona lo ofrece" },
+    { "clave": "operacion", "etiqueta": "Operación", "tipo": "opcion", "opciones": ["venta", "arriendo"], "descripcion": "venta si quiere vender el inmueble; arriendo si quiere ofrecerlo en arriendo" },
     { "clave": "ciudad", "etiqueta": "Ciudad", "tipo": "texto", "descripcion": "Ciudad donde está el inmueble" },
     { "clave": "barrio", "etiqueta": "Sector o barrio", "tipo": "texto", "descripcion": "Sector o barrio del inmueble" },
     { "clave": "direccion", "etiqueta": "Dirección", "tipo": "texto", "descripcion": "Dirección del inmueble tal como la escribe la persona" },
     { "clave": "tipo_inmueble", "etiqueta": "Tipo de inmueble", "tipo": "opcion", "opciones": ["apartamento", "casa", "lote", "local", "oficina", "bodega", "otro"] },
     { "clave": "relacion_inmueble", "etiqueta": "Relación con el inmueble", "tipo": "opcion", "opciones": ["propietario", "copropietario", "apoderado", "familiar", "conocido", "otro"] },
-    { "clave": "intencion_venta", "etiqueta": "Intención de vender", "tipo": "booleano", "descripcion": "true solo si la persona expresa que quiere vender o evaluar la venta" }
+    { "clave": "intencion_venta", "etiqueta": "Intención de vender o arrendar", "tipo": "booleano", "descripcion": "true solo si la persona expresa que quiere vender o arrendar el inmueble, o evaluar hacerlo" },
+    { "clave": "plazo_meses", "etiqueta": "Plazo para vender o arrendar (meses)", "tipo": "numero", "descripcion": "En cuántos meses espera concretar la operación. 'Este mes' o 'ya' = 1; 'sin prisa' o 'solo explorando' = 12." }
   ],
   "criterios": {
-    "campos_obligatorios": ["nombre", "telefono", "ciudad", "barrio", "direccion", "tipo_inmueble", "relacion_inmueble", "intencion_venta"],
+    "campos_obligatorios": ["nombre", "telefono", "operacion", "ciudad", "barrio", "direccion", "tipo_inmueble", "relacion_inmueble", "intencion_venta", "plazo_meses"],
     "reglas": [
-      { "id": "intencion_venta", "campo": "intencion_venta", "operador": "igual", "valor": true, "motivo": "No manifestó intención de vender" },
+      { "id": "intencion_operacion", "campo": "intencion_venta", "operador": "igual", "valor": true, "motivo": "No manifestó intención de vender o arrendar" },
       { "id": "relacion_valida", "campo": "relacion_inmueble", "operador": "en", "valor": ["propietario", "copropietario", "apoderado"], "motivo": "La relación declarada con el inmueble no cumple los criterios" },
-      { "id": "mercado_ciudad", "campo": "ciudad", "operador": "en", "valor": ["Bogotá"], "motivo": "El inmueble está fuera del mercado atendido" },
-      { "id": "tipo_inmueble", "campo": "tipo_inmueble", "operador": "en", "valor": ["apartamento", "casa", "lote", "local", "oficina", "bodega"], "motivo": "El tipo de inmueble no se atiende" }
-    ]
+      { "id": "cobertura_ciudad", "campo": "ciudad", "operador": "en", "parametro": "cobertura.ciudades", "motivo": "El inmueble está fuera de la zona de cobertura" },
+      { "id": "tipo_inmueble", "campo": "tipo_inmueble", "operador": "en", "parametro": "cobertura.tipos_inmueble", "motivo": "El tipo de inmueble no se atiende" }
+    ],
+    "prioridad": { "campo": "plazo_meses", "parametro": "prioridad.alta_hasta_meses" }
   },
   "pendientes": [
-    "Aprobar los criterios de relación válida con la propiedad (valor provisional: propietario, copropietario, apoderado).",
-    "Definir ciudades, zonas y tipos de inmueble aceptados (valor provisional: Bogotá y todos los tipos salvo 'otro')."
+    "Aprobar los criterios de relación válida con la propiedad (valor provisional: propietario, copropietario, apoderado)."
   ]
 }

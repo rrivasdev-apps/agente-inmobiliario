@@ -1,6 +1,7 @@
 'use strict';
 
-// Genera n8n/agente-inmobiliario.json (flujo de n8n) a partir de src/ y prompts/.
+// Genera los flujos de n8n (n8n/agente-inmobiliario.json y n8n/reporte-no-calificados.json)
+// a partir de src/ y prompts/.
 // Uso: node scripts/generar-n8n.js [--check]
 //   --check  falla si el archivo no está actualizado.
 //
@@ -32,6 +33,7 @@ const MODULOS = {
   evaluar: () => modulo('evaluar', 'src/calificacion/evaluar.js'),
   agenda: () => modulo('agenda', 'src/n8n/agenda.js'),
   ghl: () => modulo('ghl', 'src/integraciones/gohighlevel.js'),
+  reporte: () => modulo('reporte', 'src/n8n/reporte.js'),
 };
 
 const B64 = "const b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');";
@@ -406,7 +408,7 @@ return { json: { r: previo.r, respuesta: { ...redaccion, eventos: [...previo.pla
 
 code('Preparar envío', [x(36), -80], ['meta'], `
 const respuesta = $json.respuesta || { ...$json.plan.respuesta_fija, eventos: $json.plan.eventos };
-return { json: { r: $json.r, respuesta, envio: meta.solicitudEnvio($json.r, respuesta.texto) } };
+return { json: { r: $json.r, respuesta, envio: meta.solicitudEnvio($json.r, respuesta.texto, respuesta.documento) } };
 `);
 si('¿WhatsApp?', [x(37), -80], "$json.r.canal.tipo === 'whatsapp'");
 graph('WhatsApp: enviar', [x(38), -240], 'Credencial Header Auth: Meta WhatsApp');
@@ -435,26 +437,74 @@ conectar('Resultado del envío', 'Registrar respuesta');
 
 const flujo = {
   name: 'Agente inmobiliario: Meta (Lucía y Sonia)',
-  nodes: nodos,
-  connections: conexiones,
+  nodes: [...nodos],
+  connections: { ...conexiones },
   settings: { executionOrder: 'v1' },
 };
 
-const contenido = `${JSON.stringify(flujo, null, 2)}\n`;
+// --- Flujo 2: reporte semanal de leads no calificados ----------------------------------------
+// Los lunes a las 7:50 (hora de Bogotá) envía a los destinatarios de
+// parametros.reporte_no_calificados de cada tenant los leads no calificados
+// (con motivo) y los de prioridad baja de los últimos `dias`.
+
+nodos.length = 0;
+for (const k of Object.keys(conexiones)) delete conexiones[k];
+secuencia = 100;
+
+nodo('Cada lunes 7:50', 'n8n-nodes-base.scheduleTrigger', 1.2, [x(0), 0], {
+  rule: { interval: [{ field: 'weeks', weeksInterval: 1, triggerAtDay: [1], triggerAtHour: 7, triggerAtMinute: 50 }] },
+});
+nodo('Ejecutar ahora', 'n8n-nodes-base.manualTrigger', 1, [x(0), 200], {});
+postgres('Reportes por tenant', [x(1), 100], 'select app.reportes_no_calificados() as r');
+code('Armar correo', [x(2), 100], ['reporte'], `
+return { json: reporte.armarReporte($json.r) };
+`);
+si('¿Hay destinatarios?', [x(3), 100], '$json.enviar === true');
+nodo('Enviar reporte', 'n8n-nodes-base.gmail', 2.1, [x(4), 100], {
+  sendTo: '={{ $json.para }}',
+  subject: '={{ $json.asunto }}',
+  emailType: 'html',
+  message: '={{ $json.html }}',
+  options: { appendAttribution: false },
+}, { notes: 'Credencial: Gmail (OAuth2) de la cuenta que envía el reporte', notesInFlow: true });
+
+conectar('Cada lunes 7:50', 'Reportes por tenant');
+conectar('Ejecutar ahora', 'Reportes por tenant');
+conectar('Reportes por tenant', 'Armar correo');
+conectar('Armar correo', '¿Hay destinatarios?');
+conectar('¿Hay destinatarios?', 'Enviar reporte', 0);
+
+const flujoReporte = {
+  name: 'Agente inmobiliario: reporte semanal de no calificados',
+  nodes: [...nodos],
+  connections: { ...conexiones },
+  settings: { executionOrder: 'v1', timezone: 'America/Bogota' },
+};
+
+const SALIDAS = [
+  [destino, flujo],
+  [path.join(raiz, 'n8n', 'reporte-no-calificados.json'), flujoReporte],
+];
 
 if (require.main === module) {
-  if (process.argv.includes('--check')) {
-    const actual = fs.existsSync(destino) ? fs.readFileSync(destino, 'utf8') : '';
-    if (actual !== contenido) {
-      console.error('n8n/agente-inmobiliario.json no está actualizado. Ejecuta: node scripts/generar-n8n.js');
-      process.exit(1);
+  const desactualizados = [];
+  for (const [archivo, f] of SALIDAS) {
+    const contenido = `${JSON.stringify(f, null, 2)}\n`;
+    const rel = path.relative(raiz, archivo);
+    if (process.argv.includes('--check')) {
+      const actual = fs.existsSync(archivo) ? fs.readFileSync(archivo, 'utf8') : '';
+      if (actual !== contenido) desactualizados.push(rel);
+    } else {
+      fs.mkdirSync(path.dirname(archivo), { recursive: true });
+      fs.writeFileSync(archivo, contenido);
+      console.log(`Generado ${rel}`);
     }
-    console.log('n8n/agente-inmobiliario.json está actualizado.');
-  } else {
-    fs.mkdirSync(path.dirname(destino), { recursive: true });
-    fs.writeFileSync(destino, contenido);
-    console.log(`Generado ${path.relative(raiz, destino)}`);
   }
+  if (desactualizados.length) {
+    console.error(`${desactualizados.join(', ')} no está actualizado. Ejecuta: node scripts/generar-n8n.js`);
+    process.exit(1);
+  }
+  if (process.argv.includes('--check')) console.log('Flujos de n8n actualizados.');
 }
 
-module.exports = { flujo, EXPRESION_TRAE_MENSAJES };
+module.exports = { flujo, flujoReporte, EXPRESION_TRAE_MENSAJES };

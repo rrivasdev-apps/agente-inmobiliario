@@ -52,7 +52,7 @@ do $$ begin raise notice 'OK firma y token de Meta'; end $$;
 create temp table r (paso text primary key, v jsonb);
 
 insert into r select 'wa1', app.recibir_mensaje(jsonb_build_object(
-  'tipo_canal', 'whatsapp', 'identificador_canal', 'PENDIENTE_WHATSAPP_PHONE_NUMBER_ID',
+  'tipo_canal', 'whatsapp', 'identificador_canal', '1371752999353628',
   'id_externo', 'wamid.1', 'remitente_id', '573009998877', 'nombre', 'Pedro WA', 'texto', 'Hola, quiero vender mi apartamento'));
 
 select pg_temp.esperar((select v->>'estado' from r where paso = 'wa1') = 'ok', 'mensaje nuevo');
@@ -65,7 +65,7 @@ select pg_temp.esperar(not (select v->'plantillas' ? 'inicio' from r where paso 
 
 -- AC 40: un reintento de Meta no se procesa dos veces
 select pg_temp.esperar(app.recibir_mensaje(jsonb_build_object(
-  'tipo_canal', 'whatsapp', 'identificador_canal', 'PENDIENTE_WHATSAPP_PHONE_NUMBER_ID',
+  'tipo_canal', 'whatsapp', 'identificador_canal', '1371752999353628',
   'id_externo', 'wamid.1', 'remitente_id', '573009998877', 'texto', 'Hola, quiero vender mi apartamento'))->>'estado' = 'duplicado',
   'mensaje duplicado');
 select pg_temp.esperar(app.recibir_mensaje(jsonb_build_object(

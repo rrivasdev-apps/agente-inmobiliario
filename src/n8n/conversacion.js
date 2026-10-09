@@ -151,6 +151,7 @@ function evaluarTurno(ctx, evaluarCalificacion) {
         requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,
         datos: ctx.contacto.datos,
         verificacionDireccion: ctx.verificacion,
+        parametros: ctx.tenant.parametros || {},
       }),
       eventos: [],
     };
@@ -168,13 +169,21 @@ function evaluarTurno(ctx, evaluarCalificacion) {
 const PLANTILLA_POR_ACCION = {
   archivar: 'no_calificado',
   aclarar_direccion: 'direccion_ambigua',
+  nutrir: 'prioridad_baja',
 };
 
 // Estado del contacto en el que la plantilla de cada acción ya se envió. En
 // los turnos siguientes no se repite: el LLM responde con normalidad.
 const ESTADO_YA_INFORMADO = {
   archivar: 'no_calificado',
+  nutrir: 'nutricion',
 };
+
+/** Dossier del rol en los parámetros del tenant: { url, nombre_archivo } o null. */
+function dossier(ctx) {
+  const d = ctx.tenant.parametros && ctx.tenant.parametros.dossier && ctx.tenant.parametros.dossier[ctx.rol.codigo];
+  return d && typeof d.url === 'string' && /^https:\/\//.test(d.url) ? { url: d.url, nombre_archivo: d.nombre_archivo || 'informacion.pdf' } : null;
+}
 
 // Resultado del agendamiento en este turno (app.registrar_oferta / registrar_cita).
 const PLANTILLA_POR_RESULTADO_AGENDA = {
@@ -220,6 +229,8 @@ function instruccionSiguientePaso(ctx, ev) {
       return instruccionAgenda(ctx);
     case 'archivar':
       return 'Ya se le informó a la persona que su caso no cumple las condiciones para continuar. Responde con cordialidad y brevedad a lo que diga. No expliques los criterios internos, no pidas más datos ni reabras la calificación.';
+    case 'nutrir':
+      return 'La persona cumple los criterios pero no tiene prisa; ya se le informó que quedó registrada. Responde con cordialidad y brevedad a lo que diga. No ofrezcas ni agendes citas ni horarios. Si dice que ahora sí quiere avanzar pronto, pregúntale en cuánto tiempo quiere concretar.';
     default:
       return 'Continúa la conversación según tus reglas.';
   }
@@ -281,7 +292,10 @@ function planificarRespuesta(ctx) {
   const clave = PLANTILLA_POR_ACCION[ev.accion];
   const yaInformado = ESTADO_YA_INFORMADO[ev.accion] && ctx.estado_anterior === ESTADO_YA_INFORMADO[ev.accion];
   if (clave && p[clave] && !yaInformado) {
-    return fija(clave);
+    const plan = fija(clave);
+    // Prioridad baja: si el rol tiene dossier configurado, se adjunta.
+    if (ev.accion === 'nutrir' && dossier(ctx)) plan.respuesta_fija.documento = dossier(ctx);
+    return plan;
   }
   return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };
 }

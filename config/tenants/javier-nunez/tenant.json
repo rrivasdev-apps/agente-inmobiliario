@@ -1,13 +1,46 @@
 {
   "slug": "javier-nunez",
-  "nombre": "Equipo Javier Núñez",
+  "nombre": "JNdelT Real Estate",
   "zona_horaria": "America/Bogota",
   "mercado": "Bogotá",
+  "parametros": {
+    "cobertura": {
+      "ciudades": [
+        "Bogotá"
+      ],
+      "tipos_inmueble": [
+        "apartamento",
+        "casa",
+        "lote",
+        "local",
+        "oficina",
+        "bodega"
+      ]
+    },
+    "prioridad": {
+      "alta_hasta_meses": 3
+    },
+    "compra": {
+      "presupuesto_minimo_cop": 200000000
+    },
+    "arriendo": {
+      "canon_minimo_cop": null
+    },
+    "dossier": {
+      "lucia": null,
+      "sonia": null
+    },
+    "reporte_no_calificados": {
+      "activo": true,
+      "dias": 7,
+      "destinatarios": []
+    }
+  },
   "canales": [
     {
       "tipo": "whatsapp",
-      "identificador_externo": "PENDIENTE_WHATSAPP_PHONE_NUMBER_ID",
-      "nombre": "WhatsApp principal"
+      "identificador_externo": "1371752999353628",
+      "nombre": "WhatsApp +58 412-6102839"
     },
     {
       "tipo": "instagram_dm",
@@ -74,6 +107,9 @@
   ],
   "pendientes": [
     "Confirmar si Facebook Messenger entra en Fase 1 (PRD §10).",
-    "Definir duración de la cita, horarios de atención y modalidades ofrecidas (valores provisionales: llamada, videollamada, presencial)."
+    "Definir duración de la cita, horarios de atención y modalidades ofrecidas (valores provisionales: llamada, videollamada, presencial).",
+    "parametros.dossier: URL pública del PDF por rol cuando esté listo ({\"url\": \"https://...\", \"nombre_archivo\": \"...\"}).",
+    "parametros.reporte_no_calificados.destinatarios: correo del administrador del workspace de GoHighLevel.",
+    "parametros.arriendo.canon_minimo_cop: canon mensual mínimo para quien busca arriendo (null = sin mínimo)."
   ]
 }

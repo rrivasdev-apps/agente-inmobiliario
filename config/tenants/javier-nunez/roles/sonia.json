@@ -8,27 +8,29 @@
     { "clave": "nombre", "etiqueta": "Nombre", "tipo": "texto", "descripcion": "Nombre de la persona" },
     { "clave": "telefono", "etiqueta": "Teléfono", "tipo": "texto", "descripcion": "Teléfono en formato internacional. En WhatsApp se toma del canal; en Instagram se pregunta." },
     { "clave": "email", "etiqueta": "Correo", "tipo": "texto", "descripcion": "Correo electrónico, solo si la persona lo ofrece" },
+    { "clave": "operacion", "etiqueta": "Operación", "tipo": "opcion", "opciones": ["compra", "arriendo"], "descripcion": "compra si busca comprar; arriendo si busca un inmueble en arriendo" },
     { "clave": "ciudad_interes", "etiqueta": "Ciudad de interés", "tipo": "texto" },
     { "clave": "zonas_interes", "etiqueta": "Zonas de interés", "tipo": "texto" },
     { "clave": "tipo_inmueble", "etiqueta": "Tipo de inmueble buscado", "tipo": "opcion", "opciones": ["apartamento", "casa", "lote", "local", "oficina", "bodega", "otro"] },
-    { "clave": "presupuesto_cop", "etiqueta": "Presupuesto aproximado (COP)", "tipo": "numero", "descripcion": "Presupuesto máximo en pesos colombianos. Si da un rango, usar el valor máximo." },
+    { "clave": "presupuesto_cop", "etiqueta": "Presupuesto aproximado (COP)", "tipo": "numero", "descripcion": "Solo si busca comprar: presupuesto máximo en pesos colombianos. Si da un rango, usar el valor máximo." },
+    { "clave": "canon_mensual_cop", "etiqueta": "Canon mensual (COP)", "tipo": "numero", "descripcion": "Solo si busca arriendo: canon mensual máximo que puede pagar, en pesos colombianos." },
     { "clave": "forma_pago", "etiqueta": "Forma de pago", "tipo": "opcion", "opciones": ["contado", "credito_hipotecario", "leasing", "subsidio", "mixto", "no_definido"] },
-    { "clave": "horizonte_compra_meses", "etiqueta": "Horizonte de compra (meses)", "tipo": "numero", "descripcion": "En cuántos meses espera comprar" },
-    { "clave": "intencion_compra", "etiqueta": "Intención concreta de compra", "tipo": "booleano", "descripcion": "true solo si expresa intención concreta de comprar, no solo curiosidad" },
+    { "clave": "horizonte_compra_meses", "etiqueta": "Plazo para comprar o arrendar (meses)", "tipo": "numero", "descripcion": "En cuántos meses espera concretar. 'Este mes' o 'ya' = 1; 'sin prisa' o 'solo explorando' = 12." },
+    { "clave": "intencion_compra", "etiqueta": "Intención concreta de comprar o arrendar", "tipo": "booleano", "descripcion": "true solo si expresa intención concreta de comprar o arrendar, no solo curiosidad" },
     { "clave": "propiedad_origen", "etiqueta": "Anuncio o publicación de origen", "tipo": "texto", "descripcion": "Inmueble o anuncio que motivó el contacto, si lo menciona" }
   ],
   "criterios": {
-    "campos_obligatorios": ["nombre", "telefono", "ciudad_interes", "tipo_inmueble", "presupuesto_cop", "horizonte_compra_meses", "intencion_compra"],
+    "campos_obligatorios": ["nombre", "telefono", "operacion", "ciudad_interes", "tipo_inmueble", {"campo": "presupuesto_cop", "si": {"campo": "operacion", "valor": "compra"}}, {"campo": "canon_mensual_cop", "si": {"campo": "operacion", "valor": "arriendo"}}, "horizonte_compra_meses", "intencion_compra"],
     "reglas": [
-      { "id": "intencion_compra", "campo": "intencion_compra", "operador": "igual", "valor": true, "motivo": "No manifestó una intención concreta de compra" },
-      { "id": "mercado_ciudad", "campo": "ciudad_interes", "operador": "en", "valor": ["Bogotá"], "motivo": "Busca fuera del mercado atendido" },
-      { "id": "tipo_inmueble", "campo": "tipo_inmueble", "operador": "en", "valor": ["apartamento", "casa", "lote", "local", "oficina", "bodega"], "motivo": "El tipo de inmueble buscado no se atiende" },
-      { "id": "presupuesto_minimo", "campo": "presupuesto_cop", "operador": "mayor_o_igual", "valor": 200000000, "motivo": "El presupuesto está por debajo del umbral del portafolio" },
-      { "id": "horizonte_compra", "campo": "horizonte_compra_meses", "operador": "menor_o_igual", "valor": 6, "motivo": "El horizonte de compra supera el plazo atendido" }
-    ]
+      { "id": "intencion_operacion", "campo": "intencion_compra", "operador": "igual", "valor": true, "motivo": "No manifestó una intención concreta de comprar o arrendar" },
+      { "id": "cobertura_ciudad", "campo": "ciudad_interes", "operador": "en", "parametro": "cobertura.ciudades", "motivo": "Busca fuera de la zona de cobertura" },
+      { "id": "tipo_inmueble", "campo": "tipo_inmueble", "operador": "en", "parametro": "cobertura.tipos_inmueble", "motivo": "El tipo de inmueble buscado no se atiende" },
+      { "id": "presupuesto_minimo", "campo": "presupuesto_cop", "operador": "mayor_o_igual", "parametro": "compra.presupuesto_minimo_cop", "si": { "campo": "operacion", "valor": "compra" }, "motivo": "El presupuesto está por debajo del mínimo" },
+      { "id": "canon_minimo", "campo": "canon_mensual_cop", "operador": "mayor_o_igual", "parametro": "arriendo.canon_minimo_cop", "si": { "campo": "operacion", "valor": "arriendo" }, "motivo": "El canon está por debajo del mínimo" }
+    ],
+    "prioridad": { "campo": "horizonte_compra_meses", "parametro": "prioridad.alta_hasta_meses" }
   },
   "pendientes": [
-    "Aprobar umbrales de Sonia (valores provisionales: presupuesto mínimo 200.000.000 COP, horizonte máximo 6 meses).",
     "Decidir si la forma de pago es criterio de calificación (hoy solo se captura)."
   ]
 }

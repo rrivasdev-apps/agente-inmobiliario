@@ -37,7 +37,8 @@ function modalidadValida(ctx, pedida) {
  */
 function planificarAgenda(ctx, seleccion) {
   const ev = ctx.evaluacion || {};
-  if (ev.resultado !== 'calificado' || ESTADOS_CON_CITA.has(ctx.contacto.estado)) return { paso: null };
+  // Solo prioridad alta se agenda; prioridad baja (accion nutrir) no.
+  if (ev.accion !== 'ofrecer_agenda' || ESTADOS_CON_CITA.has(ctx.contacto.estado)) return { paso: null };
 
   const ofrecidos = (ctx.conversacion.agenda && ctx.conversacion.agenda.ofrecidos) || [];
   if (!ofrecidos.length) return { paso: 'ofrecer' };

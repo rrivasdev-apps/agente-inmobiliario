@@ -22,5 +22,7 @@ psql_() { psql -h "$datos" -p "$puerto" -U postgres -d postgres -v ON_ERROR_STOP
 psql_ -f "$raiz/tests/db/00_supabase_stub.sql"
 for m in "$raiz"/supabase/migrations/*.sql; do psql_ -f "$m"; done
 psql_ -f "$raiz/supabase/seed.sql"
+# El seed es idempotente: aplicarlo dos veces no duplica nada.
+psql_ -f "$raiz/supabase/seed.sql"
 for t in "$raiz"/tests/db/[1-9]*.sql; do psql_ -o /dev/null -f "$t"; done
 echo "Pruebas de base de datos: OK"

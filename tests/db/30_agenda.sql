@@ -14,7 +14,7 @@ $$;
 create temp table ag (paso text primary key, v jsonb);
 
 insert into ag select 'in', app.recibir_mensaje(jsonb_build_object(
-  'tipo_canal', 'whatsapp', 'identificador_canal', 'PENDIENTE_WHATSAPP_PHONE_NUMBER_ID',
+  'tipo_canal', 'whatsapp', 'identificador_canal', '1371752999353628',
   'id_externo', 'wamid.ag1', 'remitente_id', '573005550001', 'texto', 'Busco apartamento'));
 create temp table ag_ids as select ((select v->'tenant'->>'id' from ag where paso = 'in'))::uuid as t,
                                    ((select v->'conversacion'->>'id' from ag where paso = 'in'))::uuid as c;
@@ -88,7 +88,7 @@ do $$ begin raise notice 'OK oferta, horario agotado, reserva y reintento'; end 
 
 -- Calendario con confirmación manual: la cita queda pendiente --------------------
 insert into ag select 'in2', app.recibir_mensaje(jsonb_build_object(
-  'tipo_canal', 'whatsapp', 'identificador_canal', 'PENDIENTE_WHATSAPP_PHONE_NUMBER_ID',
+  'tipo_canal', 'whatsapp', 'identificador_canal', '1371752999353628',
   'id_externo', 'wamid.ag2', 'remitente_id', '573005550002', 'texto', 'Quiero vender'));
 create temp table ag_ids2 as select ((select v->'tenant'->>'id' from ag where paso = 'in2'))::uuid as t,
                                     ((select v->'conversacion'->>'id' from ag where paso = 'in2'))::uuid as c;
@@ -107,7 +107,7 @@ select pg_temp.esperar((select v->'contacto'->>'estado' from ag where paso = 'pe
 
 -- Error al reservar
 insert into ag select 'in3', app.recibir_mensaje(jsonb_build_object(
-  'tipo_canal', 'whatsapp', 'identificador_canal', 'PENDIENTE_WHATSAPP_PHONE_NUMBER_ID',
+  'tipo_canal', 'whatsapp', 'identificador_canal', '1371752999353628',
   'id_externo', 'wamid.ag3', 'remitente_id', '573005550003', 'texto', 'Busco casa'));
 select app.asignar_rol(((select v->'tenant'->>'id' from ag where paso = 'in3'))::uuid, ((select v->'conversacion'->>'id' from ag where paso = 'in3'))::uuid, '{"intencion": "comprar"}');
 select app.guardar_evaluacion(((select v->'tenant'->>'id' from ag where paso = 'in3'))::uuid, ((select v->'conversacion'->>'id' from ag where paso = 'in3'))::uuid,

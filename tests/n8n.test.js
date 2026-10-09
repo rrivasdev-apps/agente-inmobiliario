@@ -7,7 +7,9 @@ const meta = require('../src/n8n/meta');
 const geo = require('../src/n8n/geocodificacion');
 const conv = require('../src/n8n/conversacion');
 const { evaluarCalificacion } = require('../src/calificacion/evaluar');
-const { flujo, EXPRESION_TRAE_MENSAJES } = require('../scripts/generar-n8n');
+const { flujo, flujoReporte, EXPRESION_TRAE_MENSAJES } = require('../scripts/generar-n8n');
+const reporte = require('../src/n8n/reporte');
+const { parametros } = require('../config/tenants/javier-nunez/tenant.json');
 
 const lucia = require('../config/tenants/javier-nunez/roles/lucia.json');
 
@@ -302,14 +304,17 @@ test('flujo: las consultas SQL no interpolan texto del usuario', () => {
 test('flujo: el nodo de evaluación usa el evaluador incrustado', async () => {
   const ctx = ctxBase({
     contacto: { id: 'c1', estado: 'en_calificacion', datos: {
-      nombre: 'Ana', telefono: '+573001112233', ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
-      tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true } },
+      nombre: 'Ana', telefono: '+573001112233', operacion: 'venta', ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
+      tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
     verificacion: { resultado: 'verificada' },
   });
+  ctx.tenant.parametros = parametros;
   const salida = await ejecutarCode('Evaluar calificación', { r: ctx });
   assert.equal(salida.json.t, 't1');
   assert.equal(salida.json.c, 'v1');
-  assert.equal(decodificar(salida.json.payload_b64).evaluacion.resultado, 'calificado');
+  const ev = decodificar(salida.json.payload_b64).evaluacion;
+  assert.equal(ev.resultado, 'calificado');
+  assert.equal(ev.prioridad, 'baja', 'usa los parámetros del tenant (umbral 3 meses)');
 });
 
 test('flujo: de la redacción al envío', async () => {
@@ -353,4 +358,70 @@ test('flujo: el plan de agenda usa la selección extraída en el turno', async (
   assert.deepEqual(salida.json.plan, { paso: 'reservar', inicio: '2026-10-13T15:00:00-05:00', modalidad: 'videollamada' });
   const crear = flujo.nodes.find((n) => n.name === 'GHL: crear cita');
   assert.equal(crear.retryOnFail, false, 'crear cita no se reintenta');
+});
+
+// --- Prioridad baja y dossier ------------------------------------------------------
+
+test('prioridad baja: plantilla una sola vez, con dossier si está configurado', () => {
+  const plantillas = { ...ctxBase().plantillas, prioridad_baja: 'Quedas registrado.' };
+  const sinDossier = conv.planificarRespuesta(ctxBase({ plantillas, evaluacion: { accion: 'nutrir' }, estado_anterior: 'informacion_incompleta' }));
+  assert.equal(sinDossier.respuesta_fija.plantilla, 'prioridad_baja');
+  assert.equal(sinDossier.respuesta_fija.documento, undefined);
+
+  const conDossier = conv.planificarRespuesta(ctxBase({
+    plantillas,
+    tenant: { ...ctxBase().tenant, parametros: { dossier: { lucia: { url: 'https://x.co/d.pdf', nombre_archivo: 'JNdelT.pdf' } } } },
+    evaluacion: { accion: 'nutrir' },
+  }));
+  assert.deepEqual(conDossier.respuesta_fija.documento, { url: 'https://x.co/d.pdf', nombre_archivo: 'JNdelT.pdf' });
+
+  const despues = conv.planificarRespuesta(ctxBase({ plantillas, evaluacion: { accion: 'nutrir' }, estado_anterior: 'nutricion' }));
+  assert.equal(despues.respuesta_fija, null);
+  assert.match(despues.solicitud_llm.messages[0].content, /No ofrezcas ni agendes citas/);
+});
+
+test('prioridad baja no se agenda', () => {
+  const agenda = require('../src/n8n/agenda');
+  assert.deepEqual(agenda.planificarAgenda(ctxBase({ evaluacion: { resultado: 'calificado', accion: 'nutrir' }, conversacion: { agenda: {} } }), null), { paso: null });
+});
+
+test('envío de dossier: archivo en WhatsApp, enlace en Instagram', () => {
+  const doc = { url: 'https://x.co/d.pdf', nombre_archivo: 'JNdelT.pdf' };
+  const wa = meta.solicitudEnvio(ctxBase(), 'Te comparto información', doc);
+  assert.equal(wa.cuerpo.type, 'document');
+  assert.deepEqual(wa.cuerpo.document, { link: doc.url, filename: 'JNdelT.pdf', caption: 'Te comparto información' });
+  const ig = meta.solicitudEnvio(ctxBase({ canal: { tipo: 'instagram_dm' }, contacto: { instagram_id: 'U1' } }), 'Hola', doc);
+  assert.equal(ig.cuerpo.message.text, 'Hola\n\nhttps://x.co/d.pdf');
+});
+
+// --- Reporte semanal ----------------------------------------------------------------
+
+test('reporte: tablas con motivo y plazo, escapa HTML y no envía sin destinatarios', () => {
+  const fila = { tenant: { nombre: 'JNdelT', zona_horaria: 'America/Bogota' }, desde: '2026-10-02T12:00:00Z', hasta: '2026-10-09T12:00:00Z',
+    destinatarios: ['admin@x.co', 'no-es-correo'],
+    no_calificados: [{ fecha: '2026-10-05T15:00:00Z', nombre: '<b>Ana</b>', telefono: '+573001', canal: 'whatsapp', rol: 'sonia', operacion: 'compra', motivo: 'Busca fuera de la zona de cobertura' }],
+    prioridad_baja: [{ fecha: '2026-10-06T15:00:00Z', nombre: 'Pablo', rol: 'lucia', plazo_meses: '12', estado_actual: 'nutricion' }] };
+  const r = reporte.armarReporte(fila);
+  assert.equal(r.enviar, true);
+  assert.equal(r.para, 'admin@x.co');
+  assert.match(r.asunto, /1 no calificados, 1 de prioridad baja/);
+  assert.match(r.html, /Busca fuera de la zona de cobertura/);
+  assert.match(r.html, /&lt;b&gt;Ana&lt;\/b&gt;/);
+  assert.match(r.html, /<td[^>]*>12<\/td>/);
+  assert.equal(reporte.armarReporte({ ...fila, destinatarios: [] }).enviar, false);
+});
+
+test('flujo de reporte: programado semanal en hora de Bogotá y conexiones válidas', async () => {
+  assert.equal(flujoReporte.settings.timezone, 'America/Bogota');
+  const nombres = new Set(flujoReporte.nodes.map((n) => n.name));
+  for (const [desde, c] of Object.entries(flujoReporte.connections)) {
+    assert.ok(nombres.has(desde));
+    for (const salida of c.main) for (const d of salida) assert.ok(nombres.has(d.node), d.node);
+  }
+  const armar = flujoReporte.nodes.find((n) => n.name === 'Armar correo');
+  const fn = new AsyncFunction('$json', armar.parameters.jsCode);
+  const out = await fn({ r: { tenant: { nombre: 'T', zona_horaria: 'America/Bogota' }, desde: '2026-10-02T12:00:00Z', hasta: '2026-10-09T12:00:00Z', destinatarios: [], no_calificados: [], prioridad_baja: [] } });
+  assert.equal(out.json.enviar, false);
+  // El flujo principal no comparte nodos con el de reporte.
+  assert.ok(!flujo.nodes.some((n) => n.name === 'Armar correo'));
 });
