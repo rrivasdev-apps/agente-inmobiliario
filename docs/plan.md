@@ -1,5 +1,7 @@
 # Plan de implementación — Fase 1
 
+Control del proyecto contra la propuesta comercial (25 sep 2026): [tablero](https://claude.ai/artifact/Pf7paAoK1HWPZYLoM5uMGr).
+
 ## Etapa 1 — Fundaciones ✅ (este commit)
 
 - Esquema de Supabase multiempresa con RLS, máquina de estados y reglas de entrega.
