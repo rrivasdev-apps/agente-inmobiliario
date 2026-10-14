@@ -1,6 +1,7 @@
 # Plan de implementación — Fase 1
 
 Control del proyecto contra la propuesta comercial (25 sep 2026): [tablero](https://claude.ai/artifact/Pf7paAoK1HWPZYLoM5uMGr).
+Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https://claude.ai/artifact/Ddsx1NVGMCWySLBMZXndiX).
 
 ## Etapa 1 — Fundaciones ✅ (este commit)
 
