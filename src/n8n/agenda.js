@@ -18,6 +18,12 @@ const ESTADOS_CON_CITA = new Set([
   'atencion_comercial_iniciada',
 ]);
 
+/** Cita pendiente o confirmada que todavía no ocurre: no se ofrece otra. */
+function citaVigente(ctx) {
+  const c = ctx.cita;
+  return Boolean(c && ['seleccion_pendiente', 'confirmada', 'reprogramada'].includes(c.estado) && new Date(c.inicio) > new Date());
+}
+
 function config(ctx, categoria) {
   return (ctx.integraciones && ctx.integraciones[categoria]) || {};
 }
@@ -38,7 +44,9 @@ function modalidadValida(ctx, pedida) {
 function planificarAgenda(ctx, seleccion) {
   const ev = ctx.evaluacion || {};
   // Solo prioridad alta se agenda; prioridad baja (accion nutrir) no.
-  if (ev.accion !== 'ofrecer_agenda' || ESTADOS_CON_CITA.has(ctx.contacto.estado)) return { paso: null };
+  if (ev.accion !== 'ofrecer_agenda' || ESTADOS_CON_CITA.has(ctx.contacto.estado) || citaVigente(ctx)) return { paso: null };
+  // Quien regresa tras días sin escribir primero recibe el saludo; los horarios, en el turno siguiente.
+  if (ctx.retorno) return { paso: null };
 
   const ofrecidos = (ctx.conversacion.agenda && ctx.conversacion.agenda.ofrecidos) || [];
   if (!ofrecidos.length) return { paso: 'ofrecer' };

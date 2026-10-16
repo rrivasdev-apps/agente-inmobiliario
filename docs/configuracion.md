@@ -11,6 +11,7 @@ Todo umbral de negocio vive en `config/tenants/<tenant>/tenant.json` → `parame
 | `arriendo.canon_minimo_cop` | `null` | Canon mensual mínimo para quien busca arriendo. `null` = sin mínimo. |
 | `dossier.lucia` / `dossier.sonia` | `null` | `{ "url": "https://…/dossier.pdf", "nombre_archivo": "JNdelT.pdf" }`: se envía automáticamente a prioridad baja (archivo en WhatsApp, enlace en Instagram). La URL debe ser pública. |
 | `nutricion.incluir_no_calificados` | `true` | Los no calificados reciben la plantilla `no_calificado_nutricion` (y el dossier, si existe) en lugar de solo "no cumples las condiciones". |
+| `conversacion.cierre_inactividad_horas` | `48` | Horas sin mensajes tras las que se cierra la conversación. Si la persona escribe después, el agente la saluda por su nombre, le recuerda lo pendiente (cita, agendamiento, datos) y pregunta en qué la puede ayudar. |
 | `comercial.asesor` | `"Javier"` | Nombre con el que el agente se refiere al asesor en las objeciones ("eso lo revisa Javier en la reunión"). |
 | `comercial.argumento_exclusividad` | texto | Instrucción para responder "ya tengo agencia o asesor". |
 | `reporte_no_calificados.activo` | `true` | Incluye al tenant en el reporte semanal. |
@@ -31,3 +32,11 @@ Las reglas de cada rol (`roles/*.json` → `criterios`) usan estos parámetros c
 Las reglas de estilo y las objeciones están en `prompts/comun.md`, con `{{asesor}}` y `{{argumento_exclusividad}}` tomados de `parametros.comercial`.
 
 El nombre del perfil de WhatsApp se usa solo si parece el nombre de una persona (sin números, sin términos genéricos como "Cliente" o "Ventas", no solo iniciales); el agente se dirige por el primer nombre y omite tratamientos como "Dr." o "Sra.". Si no es válido, el agente pregunta el nombre.
+
+## Conversaciones y retorno
+
+Una conversación se cierra tras `conversacion.cierre_inactividad_horas` sin mensajes: cada hora (pg_cron en Supabase) y, en todo caso, al llegar el siguiente mensaje. Ese mensaje abre una conversación nueva que conserva el rol (Lucía o Sonia), los datos del contacto, su cita y la verificación de la dirección.
+
+En ese primer turno el agente no usa plantillas ni ofrece horarios: saluda por el primer nombre, recuerda en pocas palabras lo pendiente y pregunta en qué puede ayudar. Lo pendiente lo calcula el sistema según el estado: cita futura (fecha y hora), agendamiento pendiente, nutrición (plazo que dio) o datos incompletos. A un no calificado no se le recuerda nada. Desde el turno siguiente la conversación sigue su curso normal.
+
+Un no calificado que corrige un dato (por ejemplo, ofrece otro inmueble dentro de la cobertura) se vuelve a evaluar.

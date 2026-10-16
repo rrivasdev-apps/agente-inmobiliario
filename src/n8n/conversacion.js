@@ -249,7 +249,7 @@ function instruccionAgenda(ctx) {
   if (ctx.resultado_agenda && ctx.resultado_agenda.tipo === 'pendiente_confirmacion') {
     return 'La reserva se registró, pero el calendario debe confirmarla. Informa que la solicitud de cita quedó registrada y que recibirá la confirmación por este medio. No digas que está confirmada.';
   }
-  if (cita && cita.estado === 'confirmada') {
+  if (cita && cita.estado === 'confirmada' && new Date(cita.inicio) > new Date()) {
     return `La persona ya tiene una cita confirmada (${cita.inicio}, ${ctx.tenant.zona_horaria}, modalidad ${cita.modalidad}). Responde con cordialidad a lo que diga. No agendes otra cita ni cambies la existente; si quiere cambiarla, indica que el asesor la atenderá.`;
   }
   if (cita && cita.estado === 'seleccion_pendiente') {
@@ -285,6 +285,60 @@ function instruccionSiguientePaso(ctx, ev) {
   }
 }
 
+// --- Retorno tras días sin contacto -----------------------------------------------------
+
+const ESTADOS_AGENDA_PENDIENTE = new Set([
+  'calificado_pendiente_agendamiento', 'seleccion_pendiente_confirmacion', 'sin_disponibilidad', 'error_agendamiento',
+]);
+
+function fechaYHora(iso, zona) {
+  const opciones = { timeZone: zona, weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' };
+  return new Intl.DateTimeFormat('es-CO', opciones).format(new Date(iso)).replace(/[\u00a0\u202f]/g, ' ');
+}
+
+/**
+ * Lo que quedó pendiente con quien regresa, calculado del estado y no del
+ * LLM, o null si no hay nada que retomar (no calificado, cita ya pasada).
+ */
+function temaAbierto(ctx) {
+  const asesor = valoresPrompt(ctx).asesor;
+  const ahora = new Date((ctx.retorno && ctx.retorno.ahora) || Date.now());
+  const cita = ctx.cita;
+  if (cita && new Date(cita.inicio) > ahora) {
+    if (cita.estado === 'seleccion_pendiente') return 'su solicitud de cita está pendiente de confirmación';
+    if (['confirmada', 'reprogramada'].includes(cita.estado)) {
+      return `tiene una reunión con ${asesor} el ${fechaYHora(cita.inicio, ctx.tenant.zona_horaria)}`;
+    }
+  }
+  const estado = ctx.contacto.estado;
+  if (ESTADOS_AGENDA_PENDIENTE.has(estado)) return `quedó pendiente agendar la reunión con ${asesor}`;
+  if (estado === 'nutricion') {
+    const plazo = Number((ctx.contacto.datos || {}).plazo_meses || (ctx.contacto.datos || {}).horizonte_compra_meses);
+    return plazo > 0 ? `nos contó que pensaba concretar en unos ${plazo} meses` : 'quedó en avisarnos cuando quisiera avanzar';
+  }
+  if (['en_calificacion', 'informacion_incompleta'].includes(estado) && Object.keys(ctx.contacto.datos || {}).length > 1) {
+    return ctx.rol.codigo === 'lucia'
+      ? 'quedaron pendientes unos datos de su propiedad'
+      : 'quedaron pendientes unos datos de lo que busca';
+  }
+  return null;
+}
+
+function instruccionRetorno(ctx) {
+  const horas = Number(ctx.retorno.horas_sin_contacto) || 0;
+  const tiempo = horas >= 48 ? `${Math.floor(horas / 24)} días` : `${horas} horas`;
+  const tema = temaAbierto(ctx);
+  return [
+    `La persona vuelve a escribir después de ${tiempo} sin contacto. En un solo mensaje, de máximo dos frases:`,
+    '1) salúdala con cordialidad por su nombre y dile que es un gusto saludarla de nuevo;',
+    tema
+      ? `2) recuérdale en pocas palabras lo que quedó pendiente: ${tema};`
+      : '2) no menciones detalles de la conversación anterior;',
+    '3) termina preguntándole en qué la puedes ayudar hoy.',
+    'Si en su mensaje ya dijo qué necesita, no hagas esa pregunta: retoma lo que pidió. No ofrezcas horarios en este mensaje.',
+  ].join(' ');
+}
+
 function solicitudRedaccion(ctx) {
   const ev = ctx.evaluacion || {};
   const sistema = rellenar(ctx.rol.prompt_sistema, valoresPrompt(ctx));
@@ -295,13 +349,15 @@ function solicitudRedaccion(ctx) {
     `- Ya te presentaste como asistente virtual: ${ctx.conversacion.identificado_como_virtual ? 'sí' : 'no'}.`,
     ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio
       ? null
-      : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: "${ctx.plantillas.inicio}"`,
+      : ctx.retorno
+        ? `- Preséntate en pocas palabras como ${ctx.rol.nombre_visible}, asistente virtual de ${ctx.tenant.nombre}.`
+        : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: "${ctx.plantillas.inicio}"`,
     nombre
       ? `- Dirígete a la persona como "${nombre}". No le preguntes su nombre.`
       : '- Aún no sabes cómo se llama la persona: si el siguiente dato no es otro, pregúntale su nombre de forma natural.',
     `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,
     `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,
-    `- Siguiente paso: ${instruccionSiguientePaso(ctx, ev)}`,
+    `- Siguiente paso: ${ctx.retorno ? instruccionRetorno(ctx) : instruccionSiguientePaso(ctx, ev)}`,
     'Responde solo con el texto del mensaje para la persona, sin comillas ni explicaciones.',
   ].filter(Boolean).join('\n');
 
@@ -324,6 +380,9 @@ function planificarRespuesta(ctx) {
     if (p.seleccion_intencion) return fija('seleccion_intencion');
     return { respuesta_fija: { texto: RESPUESTA_SEGURA, plantilla: null }, solicitud_llm: null, eventos: [evento('error', null, 'planificar_respuesta', 'Falta la plantilla seleccion_intencion')] };
   }
+
+  // Quien regresa tras días sin escribir recibe un saludo redactado, no una plantilla.
+  if (ctx.retorno) return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };
 
   const ra = ctx.resultado_agenda;
   const claveAgenda = ra && PLANTILLA_POR_RESULTADO_AGENDA[ra.tipo];
@@ -362,6 +421,7 @@ function interpretarRedaccion(respuesta) {
 module.exports = {
   RESPUESTA_SEGURA,
   primerNombre,
+  temaAbierto,
   rellenar,
   solicitudClasificacion,
   interpretarClasificacion,

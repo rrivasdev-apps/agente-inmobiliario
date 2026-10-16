@@ -33,6 +33,9 @@
     "nutricion": {
       "incluir_no_calificados": true
     },
+    "conversacion": {
+      "cierre_inactividad_horas": 48
+    },
     "reporte_no_calificados": {
       "activo": true,
       "dias": 7,

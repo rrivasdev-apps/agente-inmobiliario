@@ -214,7 +214,7 @@ test('respuesta: tras ofrecer horarios o calificar como no apto, responde el LLM
   assert.match(pendiente.solicitud_llm.messages[0].content, /número del horario[\s\S]*1\. Lunes 9 am/);
 
   const conCita = conv.planificarRespuesta(ctxBase({
-    cita: { estado: 'confirmada', inicio: '2026-10-12T09:00:00-05:00', modalidad: 'llamada' },
+    cita: { estado: 'confirmada', inicio: '2030-10-12T09:00:00-05:00', modalidad: 'llamada' },
     evaluacion: { accion: 'ofrecer_agenda' },
   }));
   assert.match(conCita.solicitud_llm.messages[0].content, /ya tiene una cita confirmada/);
@@ -477,4 +477,55 @@ test('no calificado: con nutrición activa recibe mensaje cordial y dossier una 
   const sinNutricion = conv.planificarRespuesta(ctxBase({ plantillas, evaluacion: { accion: 'archivar' } }));
   assert.equal(sinNutricion.respuesta_fija.plantilla, 'no_calificado');
   assert.equal(sinNutricion.respuesta_fija.documento, undefined);
+});
+
+// --- Retorno tras días sin contacto --------------------------------------------------
+
+const RETORNO = { horas_sin_contacto: 75, ultimo_contacto_en: '2026-10-13T12:00:00Z', ahora: '2026-10-16T15:00:00Z' };
+
+function promptRetorno(extra) {
+  const plan = conv.planificarRespuesta(ctxBase({
+    retorno: RETORNO,
+    evaluacion: { accion: 'ofrecer_agenda', campos_faltantes: [] },
+    ...extra,
+  }));
+  assert.equal(plan.respuesta_fija, null, 'quien regresa recibe un saludo redactado, no una plantilla');
+  return plan.solicitud_llm.messages[0].content;
+}
+
+test('retorno: saluda por el nombre, recuerda la cita vigente y pregunta en qué ayudar', () => {
+  const prompt = promptRetorno({
+    contacto: { ...ctxBase().contacto, estado: 'cita_confirmada', datos: { nombre: 'Rafael' } },
+    cita: { estado: 'confirmada', inicio: '2026-10-19T13:00:00Z', modalidad: 'llamada' },
+    tenant: { ...ctxBase().tenant, parametros: { comercial: { asesor: 'Javier' } } },
+  });
+  assert.match(prompt, /Dirígete a la persona como "Rafael"/);
+  assert.match(prompt, /después de 3 días sin contacto/);
+  assert.match(prompt, /tiene una reunión con Javier el lunes, 19 de octubre, 8:00 a\. m\./);
+  assert.match(prompt, /en qué la puedes ayudar hoy/);
+  assert.match(prompt, /Preséntate en pocas palabras como/);
+  assert.doesNotMatch(prompt, /Hola, soy Lucía\./, 'no repite la presentación con preguntas de inicio');
+});
+
+test('retorno: tema abierto según el estado, y nada que retomar si no calificó', () => {
+  const tema = (contacto, extra = {}) => conv.temaAbierto(ctxBase({ retorno: RETORNO, contacto: { ...ctxBase().contacto, ...contacto }, ...extra }));
+  assert.equal(tema({ estado: 'calificado_pendiente_agendamiento' }), 'quedó pendiente agendar la reunión con un asesor');
+  assert.equal(tema({ estado: 'nutricion', datos: { plazo_meses: 8 } }), 'nos contó que pensaba concretar en unos 8 meses');
+  assert.equal(tema({ estado: 'informacion_incompleta', datos: { nombre: 'Ana', ciudad: 'Bogotá' } }), 'quedaron pendientes unos datos de su propiedad');
+  assert.equal(tema({ estado: 'no_calificado' }), null);
+  // Cita que ya pasó: no hay nada que recordar.
+  assert.equal(tema({ estado: 'cita_confirmada' }, { cita: { estado: 'confirmada', inicio: '2026-10-14T13:00:00Z' } }), null);
+  assert.match(promptRetorno({ contacto: { ...ctxBase().contacto, estado: 'no_calificado' } }), /no menciones detalles de la conversación anterior/);
+});
+
+test('agenda: no ofrece horarios a quien regresa ni a quien ya tiene una cita vigente', () => {
+  const agenda = require('../src/n8n/agenda');
+  const base = ctxBase({ evaluacion: { accion: 'ofrecer_agenda' }, conversacion: { ...ctxBase().conversacion, agenda: {} } });
+  assert.deepEqual(agenda.planificarAgenda(base, null), { paso: 'ofrecer' });
+  assert.deepEqual(agenda.planificarAgenda({ ...base, retorno: RETORNO }, null), { paso: null });
+  // El caso real del 15 oct: estado no_calificado pero con cita confirmada a futuro.
+  const conCita = { ...base, contacto: { ...base.contacto, estado: 'no_calificado' }, cita: { estado: 'confirmada', inicio: '2030-10-19T13:00:00Z' } };
+  assert.deepEqual(agenda.planificarAgenda(conCita, null), { paso: null });
+  // Una cita que ya pasó no impide agendar otra.
+  assert.deepEqual(agenda.planificarAgenda({ ...conCita, cita: { estado: 'confirmada', inicio: '2020-01-01T13:00:00Z' } }, null), { paso: 'ofrecer' });
 });
