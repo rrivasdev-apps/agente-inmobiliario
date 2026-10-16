@@ -24,6 +24,9 @@ function tabla(titulo, filas, columnas, zona) {
   return `<h3>${escapar(titulo)} (${filas.length})</h3><table style="border-collapse:collapse;font-size:14px"><thead><tr>${encabezado}</tr></thead><tbody>${cuerpo}</tbody></table>`;
 }
 
+// Fuera de cobertura: la referencia queda pendiente; marcarla como realizada es una gestión manual.
+const REFERENCIA = { true: 'Autorizada (pendiente)', false: 'No autorizada' };
+
 const COMUNES = [
   { titulo: 'Fecha', valor: (f, z) => fecha(f.fecha, z) },
   { titulo: 'Nombre', valor: (f) => f.nombre || '—' },
@@ -46,7 +49,11 @@ function armarReporte(r) {
   const html = [
     `<h2>Leads no calificados y de prioridad baja</h2>`,
     `<p>${escapar(r.tenant && r.tenant.nombre)} · ${escapar(periodo)}</p>`,
-    tabla('No calificados', noCalificados, [...COMUNES, { titulo: 'Motivo', valor: (f) => f.motivo || '—' }], zona),
+    tabla('No calificados', noCalificados, [
+      ...COMUNES,
+      { titulo: 'Motivo', valor: (f) => f.motivo || '—' },
+      { titulo: 'Referencia', valor: (f) => REFERENCIA[String(f.autoriza_referencia)] || '—' },
+    ], zona),
     tabla('Prioridad baja (en nutrición, no se agendaron)', baja, [
       ...COMUNES,
       { titulo: 'Plazo (meses)', valor: (f) => f.plazo_meses || '—' },

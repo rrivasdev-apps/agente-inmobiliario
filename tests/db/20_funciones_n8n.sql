@@ -79,7 +79,7 @@ insert into r select 'rol', app.asignar_rol(
   '{"intencion": "vender"}');
 select pg_temp.esperar((select v->'conversacion'->>'rol_codigo' from r where paso = 'rol') = 'lucia', 'vender -> Lucía');
 select pg_temp.esperar((select v->'rol'->>'codigo' from r where paso = 'rol') = 'lucia', 'contexto con el rol');
-select pg_temp.esperar((select v->'plantillas'->>'inicio' from r where paso = 'rol') like 'Hola, soy Lucía%', 'plantilla de Lucía');
+select pg_temp.esperar((select v->'plantillas'->>'inicio' from r where paso = 'rol') like '%Soy Lucía, asistente virtual de Javier Núñez del Toro%', 'plantilla de Lucía');
 select pg_temp.esperar((select rol_origen from app.contactos where telefono = '+573009998877') = 'lucia', 'rol de origen');
 
 -- Datos: solo claves y tipos definidos por el rol

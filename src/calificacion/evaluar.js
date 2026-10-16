@@ -24,6 +24,8 @@
  *   ese valor (o uno de los valores de un arreglo).
  * - `parametro`: el valor sale de los parámetros del tenant (ruta con puntos).
  *   Si el parámetro está vacío (null), la regla no se aplica.
+ * - `temprana`: la regla se aplica apenas se conoce su dato, aunque falten
+ *   otros (p. ej. cobertura): si falla, no se prolonga la calificación.
  * - `prioridad`: quien cumple los criterios es "alta" si el plazo (en meses)
  *   es menor o igual al umbral, y "baja" si no. Alta -> ofrecer agenda;
  *   baja -> nutrir (no se agenda).
@@ -210,6 +212,15 @@ function evaluarCalificacion({ criterios, requiereVerificacionDireccion, datos, 
 
   const base = { campos_faltantes: faltantes, reglas: [], prioridad: null, motivo: null, codigo_motivo: null };
 
+  // 0. Reglas tempranas: si una falla con su dato ya conocido, no se sigue
+  // pidiendo información. Se informan todas las reglas incumplidas con datos presentes.
+  const conDato = (regla) => estaPresente(obtener(datosSeguros, regla.campo));
+  const tempranas = evaluarReglas(criterios.reglas.filter((r) => r.temprana && conDato(r)), datosSeguros, parametros);
+  if (tempranas.some((r) => !r.cumple)) {
+    const reglasConDato = evaluarReglas(criterios.reglas.filter(conDato), datosSeguros, parametros);
+    return noCalificado(base, reglasConDato);
+  }
+
   // 1. Información mínima (AC 10: no se inventan datos; se piden).
   if (faltantes.length) {
     return {
@@ -266,28 +277,8 @@ function evaluarCalificacion({ criterios, requiereVerificacionDireccion, datos, 
 
   // 3. Reglas de negocio configuradas. Se evalúan todas para dejar trazabilidad.
   // Las reglas que no aplican (condición `si`) o cuyo parámetro está vacío se omiten.
-  const reglas = criterios.reglas
-    .filter((regla) => aplica(regla.si, datosSeguros))
-    .map((regla) => (regla.parametro === undefined ? regla : { ...regla, valor: obtener(parametros || {}, regla.parametro) }))
-    .filter((regla) => regla.valor !== undefined && regla.valor !== null)
-    .map((regla) => {
-      const errores = validarValor(regla, `regla ${regla.id}`);
-      if (errores.length) throw new Error(`Parámetro inválido: ${errores.join('; ')}`);
-      const valor = obtener(datosSeguros, regla.campo);
-      return { id: regla.id, campo: regla.campo, valor, cumple: cumpleRegla(regla, valor), motivo: regla.motivo };
-    });
-  const incumplidas = reglas.filter((r) => !r.cumple);
-
-  if (incumplidas.length) {
-    return {
-      ...base,
-      reglas,
-      resultado: RESULTADO.NO_CALIFICADO,
-      accion: ACCION.ARCHIVAR,
-      codigo_motivo: incumplidas.map((r) => r.id).join(','),
-      motivo: incumplidas.map((r) => r.motivo).join('; '),
-    };
-  }
+  const reglas = evaluarReglas(criterios.reglas, datosSeguros, parametros);
+  if (reglas.some((r) => !r.cumple)) return noCalificado(base, reglas);
 
   // 4. Prioridad: quien califica se agenda si es urgente; si no, se nutre.
   const prioridad = calcularPrioridad(criterios.prioridad, datosSeguros, parametros);
@@ -297,6 +288,31 @@ function evaluarCalificacion({ criterios, requiereVerificacionDireccion, datos, 
     prioridad,
     resultado: RESULTADO.CALIFICADO,
     accion: prioridad === PRIORIDAD.BAJA ? ACCION.NUTRIR : ACCION.OFRECER_AGENDA,
+  };
+}
+
+function evaluarReglas(reglas, datos, parametros) {
+  return reglas
+    .filter((regla) => aplica(regla.si, datos))
+    .map((regla) => (regla.parametro === undefined ? regla : { ...regla, valor: obtener(parametros || {}, regla.parametro) }))
+    .filter((regla) => regla.valor !== undefined && regla.valor !== null)
+    .map((regla) => {
+      const errores = validarValor(regla, `regla ${regla.id}`);
+      if (errores.length) throw new Error(`Parámetro inválido: ${errores.join('; ')}`);
+      const valor = obtener(datos, regla.campo);
+      return { id: regla.id, campo: regla.campo, valor, cumple: cumpleRegla(regla, valor), motivo: regla.motivo };
+    });
+}
+
+function noCalificado(base, reglas) {
+  const incumplidas = reglas.filter((r) => !r.cumple);
+  return {
+    ...base,
+    reglas,
+    resultado: RESULTADO.NO_CALIFICADO,
+    accion: ACCION.ARCHIVAR,
+    codigo_motivo: incumplidas.map((r) => r.id).join(','),
+    motivo: incumplidas.map((r) => r.motivo).join('; '),
   };
 }
 

@@ -74,3 +74,27 @@ select app.registrar_nota_asesor((select t from op_ids), (select c from op_ids),
 select pg_temp.esperar(exists (select 1 from app.eventos where operacion = 'nota_asesor' and nivel = 'error'), 'falla de la nota registrada');
 
 do $$ begin raise notice 'OK oportunidades: caso aparte, misma reunión y nota para el asesor'; end $$;
+
+-- Cambio de asistente: quien hablaba con Lucía quiere comprar (migración 0008)
+insert into op select 'compra', app.registrar_datos_y_seleccion((select t from op_ids), (select c from op_ids),
+  '{"datos": {"presupuesto_cop": 500000000}, "cambio_intencion": "comprar"}');
+select pg_temp.esperar((select v->'rol'->>'codigo' from op where paso = 'compra') = 'sonia', 'pasa con Sonia');
+select pg_temp.esperar((select v->'conversacion'->>'rol_codigo' from op where paso = 'compra') = 'sonia', 'la conversación cambia de rol');
+select pg_temp.esperar((select v->'oportunidad'->>'rol_anterior' from op where paso = 'compra') = 'lucia', 'informa la asistente anterior');
+select pg_temp.esperar((select v->'contacto'->>'estado' from op where paso = 'compra') = 'en_calificacion', 'empieza un caso nuevo');
+select pg_temp.esperar((select v->'contacto'->'datos'->>'presupuesto_cop' from op where paso = 'compra') = '500000000', 'los datos del turno van al caso de Sonia');
+select pg_temp.esperar((select v->'contacto'->'datos'->>'direccion' from op where paso = 'compra') is null, 'no arrastra la dirección de la venta');
+select pg_temp.esperar((select count(*) from app.oportunidades where contacto_id = (select k from op_ids)) = 3, 'tres casos: dos ventas y una compra');
+-- El mismo rol no cambia nada
+select pg_temp.esperar(not app.cambiar_rol((select t from op_ids), (select c from op_ids), 'sonia'), 'mismo rol: sin cambios');
+
+-- Reporte con la autorización de referencia
+select app.registrar_datos((select t from op_ids), (select c from op_ids), '{"datos": {"ciudad": "Cali"}}');
+update app.contactos set datos = datos || '{"autoriza_referencia": true}' where id = (select k from op_ids);
+select app.guardar_evaluacion((select t from op_ids), (select c from op_ids),
+  '{"evaluacion": {"resultado": "no_calificado", "accion": "archivar", "campos_faltantes": [], "codigo_motivo": "cobertura_ciudad"}}');
+select pg_temp.esperar(exists (
+  select 1 from jsonb_array_elements(app.reporte_no_calificados((select t from op_ids), now() - interval '1 day')->'no_calificados') f
+  where f->'autoriza_referencia' = 'true'::jsonb), 'el reporte muestra la autorización de referencia');
+
+do $$ begin raise notice 'OK cambio de asistente y referencia en el reporte'; end $$;

@@ -145,7 +145,7 @@ function solicitudDisponibilidad({ config, desde, dias, zonaHoraria }) {
  * Solo devuelve horarios presentes en la respuesta (AC 30); una lista vacía
  * significa sin_disponibilidad.
  */
-function interpretarDisponibilidad(cuerpo, { ahora = new Date(), antelacionMinutos = 60, maximo = 4, maximoPorDia = 2 } = {}) {
+function interpretarDisponibilidad(cuerpo, { ahora = new Date(), antelacionMinutos = 60, maximo = 4, maximoPorDia = 2, admitir = () => true } = {}) {
   const limite = aFecha(ahora, 'ahora').getTime() + antelacionMinutos * 60 * 1000;
   const porDia = new Map();
 
@@ -156,7 +156,7 @@ function interpretarDisponibilidad(cuerpo, { ahora = new Date(), antelacionMinut
   for (const fecha of fechas) {
     const slots = Array.isArray(cuerpo[fecha] && cuerpo[fecha].slots) ? cuerpo[fecha].slots : [];
     const validos = slots
-      .filter((s) => !Number.isNaN(new Date(s).getTime()) && new Date(s).getTime() >= limite)
+      .filter((s) => !Number.isNaN(new Date(s).getTime()) && new Date(s).getTime() >= limite && admitir(s))
       .sort((a, b) => new Date(a) - new Date(b));
     if (validos.length) porDia.set(fecha, validos);
   }

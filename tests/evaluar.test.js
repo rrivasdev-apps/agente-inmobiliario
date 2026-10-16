@@ -89,7 +89,7 @@ test('Lucía: pide datos faltantes sin inventarlos (AC 10)', () => {
   const r = evaluarLucia({ ...parcial, barrio: '   ' }, null);
   assert.equal(r.resultado, 'informacion_incompleta');
   assert.equal(r.accion, 'solicitar_datos');
-  assert.deepEqual(r.campos_faltantes, ['barrio', 'direccion', 'intencion_venta']);
+  assert.deepEqual(r.campos_faltantes, ['barrio', 'intencion_venta', 'direccion'], 'en el orden configurado: la dirección al final');
   assert.deepEqual(evaluarLucia({ ...propietario, plazo_meses: undefined }, null).campos_faltantes, ['plazo_meses']);
 });
 
@@ -130,7 +130,19 @@ test('Lucía: relación no válida y ciudad fuera de mercado registran ambos mot
   assert.equal(r.resultado, 'no_calificado');
   assert.equal(r.codigo_motivo, 'relacion_valida,cobertura_ciudad');
   assert.match(r.motivo, /relación declarada/);
-  assert.match(r.motivo, /fuera de la zona de cobertura/);
+  assert.match(r.motivo, /fuera de la cobertura directa/);
+});
+
+test('Lucía: la cobertura se evalúa apenas se conoce la ciudad, sin pedir el resto', () => {
+  const r = evaluarLucia({ nombre: 'Ana', ciudad: 'Medellín' }, null);
+  assert.equal(r.resultado, 'no_calificado');
+  assert.equal(r.codigo_motivo, 'cobertura_ciudad');
+  assert.ok(r.campos_faltantes.length > 0, 'no hacía falta completar los datos');
+  const conRelacion = evaluarLucia({ nombre: 'Ana', ciudad: 'Medellín', relacion_inmueble: 'conocido' }, null);
+  assert.equal(conRelacion.codigo_motivo, 'relacion_valida,cobertura_ciudad', 'informa todas las reglas incumplidas con dato');
+  // En Bogotá sigue pidiendo datos en el orden configurado: primero la ciudad.
+  assert.equal(evaluarLucia({ ciudad: 'Bogotá' }, null).campos_faltantes[0], 'nombre');
+  assert.equal(evaluarLucia({}, null).campos_faltantes[0], 'ciudad');
 });
 
 // PRD §9.8 prueba 5

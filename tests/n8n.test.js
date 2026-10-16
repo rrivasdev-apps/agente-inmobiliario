@@ -18,7 +18,7 @@ function ctxBase(extra = {}) {
     tenant: { id: 't1', nombre: 'Equipo Javier Núñez', zona_horaria: 'America/Bogota' },
     canal: { id: 'k1', tipo: 'whatsapp', identificador_externo: '1234567890' },
     contacto: { id: 'c1', telefono: '+573001112233', instagram_id: null, estado: 'en_calificacion', datos: { telefono: '+573001112233' } },
-    conversacion: { id: 'v1', rol_codigo: 'lucia', identificado_como_virtual: false },
+    conversacion: { id: 'v1', rol_codigo: 'lucia', identificado_como_virtual: true },
     rol: { codigo: 'lucia', prompt_sistema: 'Trabajas para {{nombre_tenant}} por {{canal}}.', campos: lucia.campos, criterios: lucia.criterios, requiere_verificacion_direccion: true },
     plantillas: {
       inicio: 'Hola, soy Lucía.',
@@ -166,7 +166,7 @@ test('extracción: describe los campos del rol y tolera fallas', () => {
   assert.equal(s.model, 'gpt-x');
   assert.match(s.messages[0].content, /relacion_inmueble \(una de: propietario, copropietario/);
   assert.equal(s.messages.at(-1).content, 'Hola, quiero vender');
-  assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana"}}')), { datos: { nombre: 'Ana' }, seleccion: null, nueva_propiedad: false, misma_cita: false, eventos: [] });
+  assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana"}}')), { datos: { nombre: 'Ana' }, seleccion: null, nueva_propiedad: false, misma_cita: false, cambio_intencion: null, eventos: [] });
   assert.doesNotMatch(s.messages[0].content, /seleccion/);
   assert.deepEqual(conv.interpretarExtraccion(openaiOk('no es json')).datos, {});
   assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":[1]}')).datos.constructor, Object);
@@ -191,15 +191,18 @@ test('respuesta: plantillas según el resultado del agendamiento', () => {
     ...ctxBase().plantillas,
     calificado: 'Elige: {{horarios_disponibles}}',
     horario_agotado: 'Alternativas: {{horarios_alternativos}}',
-    confirmacion: 'Cita el {{fecha}} a las {{hora}}, zona horaria {{zona_horaria}}, mediante {{modalidad}}.',
+    confirmacion: 'Listo, {{encuentro}} con {{asesor}} quedó confirmada para el {{fecha}} a las {{hora}} (hora de {{zona_horaria}}). {{quien_contacta}}',
   };
-  const plan = (ra) => conv.planificarRespuesta(ctxBase({ plantillas, evaluacion: { accion: 'ofrecer_agenda' }, resultado_agenda: ra }));
+  const tenant = { ...ctxBase().tenant, parametros: require('../config/tenants/javier-nunez/tenant.json').parametros };
+  const plan = (ra) => conv.planificarRespuesta(ctxBase({ plantillas, tenant, evaluacion: { accion: 'ofrecer_agenda' }, resultado_agenda: ra }));
   assert.equal(plan({ tipo: 'ofrecidos', texto: '1. Lunes' }).respuesta_fija.texto, 'Elige: 1. Lunes');
   assert.equal(plan({ tipo: 'agotado', texto: '1. Martes' }).respuesta_fija.texto, 'Alternativas: 1. Martes');
   assert.equal(
     plan({ tipo: 'confirmada', fecha: 'lunes 12 de octubre', hora: '9:00 a. m.', zona_horaria: 'America/Bogota', zona_texto: 'Colombia', modalidad: 'llamada' }).respuesta_fija.texto,
-    'Cita el lunes 12 de octubre a las 9:00 a. m., zona horaria Colombia, mediante llamada.',
+    'Listo, tu llamada con Javier quedó confirmada para el lunes 12 de octubre a las 9:00 a. m. (hora de Colombia). Javier te llamará a este número.',
   );
+  assert.match(plan({ tipo: 'confirmada', fecha: 'f', hora: 'h', zona_texto: 'Colombia', modalidad: 'presencial' }).respuesta_fija.texto,
+    /tu visita presencial con Javier quedó confirmada/, 'distingue llamada de visita presencial');
   assert.equal(plan({ tipo: 'error' }).respuesta_fija.plantilla, 'falla_agenda');
   assert.equal(plan({ tipo: 'sin_disponibilidad' }).respuesta_fija.plantilla, 'falla_agenda');
   assert.match(plan({ tipo: 'pendiente_confirmacion' }).solicitud_llm.messages[0].content, /debe confirmarla/);
@@ -241,12 +244,19 @@ test('extracción: con horarios ofrecidos pide la selección', () => {
 });
 
 test('respuesta redactada: estado del sistema, presentación y siguiente dato', () => {
-  const plan = conv.planificarRespuesta(ctxBase({ evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['relacion_inmueble', 'ciudad'] } }));
+  const primera = { ...ctxBase().conversacion, identificado_como_virtual: false };
+  const plan = conv.planificarRespuesta(ctxBase({ conversacion: primera, evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['relacion_inmueble', 'ciudad'] } }));
   assert.equal(plan.respuesta_fija, null);
   const sistema = plan.solicitud_llm.messages[0].content;
   assert.match(sistema, /^Trabajas para Equipo Javier Núñez por WhatsApp\./);
-  assert.match(sistema, /Pide solo el siguiente dato: Relación con el inmueble\./);
+  assert.match(sistema, /Pide permiso para hacerle unas preguntas breves/, 'primero pide permiso');
   assert.match(sistema, /Preséntate como en esta plantilla/);
+
+  const conPermiso = conv.planificarRespuesta(ctxBase({
+    contacto: { ...ctxBase().contacto, datos: { acepta_preguntas: true } },
+    evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['relacion_inmueble', 'ciudad'] },
+  }));
+  assert.match(conPermiso.solicitud_llm.messages[0].content, /Pide solo el siguiente dato: Relación con el inmueble\./);
 
   const yaPresentada = conv.planificarRespuesta(ctxBase({
     conversacion: { id: 'v1', rol_codigo: 'lucia', identificado_como_virtual: true },
@@ -304,7 +314,7 @@ test('flujo: las consultas SQL no interpolan texto del usuario', () => {
 test('flujo: el nodo de evaluación usa el evaluador incrustado', async () => {
   const ctx = ctxBase({
     contacto: { id: 'c1', estado: 'en_calificacion', datos: {
-      nombre: 'Ana', telefono: '+573001112233', operacion: 'venta', ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
+      nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
       tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
     verificacion: { resultado: 'verificada' },
   });
@@ -399,7 +409,7 @@ test('envío de dossier: archivo en WhatsApp, enlace en Instagram', () => {
 test('reporte: tablas con motivo y plazo, escapa HTML y no envía sin destinatarios', () => {
   const fila = { tenant: { nombre: 'JNdelT', zona_horaria: 'America/Bogota' }, desde: '2026-10-02T12:00:00Z', hasta: '2026-10-09T12:00:00Z',
     destinatarios: ['admin@x.co', 'no-es-correo'],
-    no_calificados: [{ fecha: '2026-10-05T15:00:00Z', nombre: '<b>Ana</b>', telefono: '+573001', canal: 'whatsapp', rol: 'sonia', operacion: 'compra', motivo: 'Busca fuera de la zona de cobertura' }],
+    no_calificados: [{ fecha: '2026-10-05T15:00:00Z', nombre: '<b>Ana</b>', telefono: '+573001', canal: 'whatsapp', rol: 'sonia', operacion: 'compra', motivo: 'Busca fuera de la zona de cobertura', autoriza_referencia: true }],
     prioridad_baja: [{ fecha: '2026-10-06T15:00:00Z', nombre: 'Pablo', rol: 'lucia', plazo_meses: '12', estado_actual: 'nutricion' }] };
   const r = reporte.armarReporte(fila);
   assert.equal(r.enviar, true);
@@ -408,6 +418,7 @@ test('reporte: tablas con motivo y plazo, escapa HTML y no envía sin destinatar
   assert.match(r.html, /Busca fuera de la zona de cobertura/);
   assert.match(r.html, /&lt;b&gt;Ana&lt;\/b&gt;/);
   assert.match(r.html, /<td[^>]*>12<\/td>/);
+  assert.match(r.html, /Autorizada \(pendiente\)/, 'la referencia autorizada queda pendiente, no realizada');
   assert.equal(reporte.armarReporte({ ...fila, destinatarios: [] }).enviar, false);
 });
 
@@ -460,8 +471,14 @@ test('objeciones: asesor y argumento de exclusividad salen de los parámetros', 
     evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['x'] },
   });
   const sistema = conv.planificarRespuesta(ctx).solicitud_llm.messages[0].content;
-  assert.match(sistema, /los revisa Javier en la reunión/);
-  assert.match(sistema, /exclusividad con JNdelT Real Estate/);
+  assert.match(sistema, /Lo demás lo revisa Javier/);
+  assert.match(sistema, /en exclusiva con Javier/);
+  assert.doesNotMatch(sistema, /comisión del 5 %/, 'la comisión de venta no va en las reglas comunes (Sonia atiende compradores)');
+  const lucia = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'prompts', 'lucia.md'), 'utf8');
+  const sistemaLucia = conv.planificarRespuesta({ ...ctx, rol: { ...ctx.rol, prompt_sistema: `${prompt}\n\n${lucia.replace('{{campos}}', '- datos')}` } }).solicitud_llm.messages[0].content;
+  assert.match(sistemaLucia, /Javier trabaja la propiedad en exclusiva con una comisión del 5 %/, 'propuesta aprobada');
+  assert.match(sistemaLucia, /No inventes la base de cálculo/);
+  assert.doesNotMatch(sistemaLucia, /\{\{/);
   assert.match(sistema, /Sin emojis/);
   assert.doesNotMatch(sistema, /\{\{/, 'sin marcadores sin reemplazar');
 });
@@ -495,6 +512,7 @@ function promptRetorno(extra) {
 
 test('retorno: saluda por el nombre, recuerda la cita vigente y pregunta en qué ayudar', () => {
   const prompt = promptRetorno({
+    conversacion: { ...ctxBase().conversacion, identificado_como_virtual: false },
     contacto: { ...ctxBase().contacto, estado: 'cita_confirmada', datos: { nombre: 'Rafael' } },
     cita: { estado: 'confirmada', inicio: '2026-10-19T13:00:00Z', modalidad: 'llamada' },
     tenant: { ...ctxBase().tenant, parametros: { comercial: { asesor: 'Javier' } } },
@@ -576,7 +594,7 @@ test('otra propiedad en la misma reunión: no ofrece horarios, deja nota y lo co
 
 test('otra propiedad en la misma reunión con prioridad baja: no se nutre', () => {
   const ctx = ctxBase({
-    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana', telefono: '+573001112233', operacion: 'venta', tipo_inmueble: 'casa', ciudad: 'Bogotá', barrio: 'Usaquén', direccion: 'Cl 1 # 2-3', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
+    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', tipo_inmueble: 'casa', ciudad: 'Bogotá', barrio: 'Usaquén', direccion: 'Cl 1 # 2-3', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
     verificacion: { resultado: 'verificada' },
     tenant: { ...ctxBase().tenant, parametros: require('../config/tenants/javier-nunez/tenant.json').parametros },
   });
@@ -598,4 +616,116 @@ test('flujo: la nota para el asesor pasa por la BD y vuelve a la respuesta', asy
   const salida = await ejecutarCode('Interpretar nota', { statusCode: 201, body: { note: { id: 'n1' } } }, { 'Preparar nota GHL': previo });
   const payload = JSON.parse(Buffer.from(salida.json.payload_b64, 'base64').toString());
   assert.deepEqual(payload, { ok: true, error: null, evaluacion: r.evaluacion });
+});
+
+// --- Correcciones de la reunión de revisión (Lucía) -----------------------------------
+
+const PARAMS = require('../config/tenants/javier-nunez/tenant.json').parametros;
+const luciaReal = require('../config/tenants/javier-nunez/roles/lucia.json');
+
+function ctxLucia(extra = {}) {
+  const base = ctxBase({ tenant: { ...ctxBase().tenant, parametros: PARAMS } });
+  return { ...base, ...extra, rol: { ...base.rol, campos: luciaReal.campos, criterios: luciaReal.criterios, nombre_visible: 'Lucía', ...(extra.rol || {}) } };
+}
+const sistemaDe = (plan) => plan.solicitud_llm.messages[0].content;
+
+test('Lucía: si no tiene tiempo, se respeta y no pregunta', () => {
+  const plan = conv.planificarRespuesta(ctxLucia({
+    contacto: { ...ctxBase().contacto, datos: { acepta_preguntas: false } },
+    evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['ciudad'] },
+  }));
+  assert.match(sistemaDe(plan), /no tiene tiempo: respétalo/);
+  assert.doesNotMatch(sistemaDe(plan), /Pide solo el siguiente dato/);
+});
+
+test('Lucía: con solo el primer nombre pide el nombre completo y no califica', () => {
+  const datos = { nombre: 'Rafael', telefono: '+573001112233', operacion: 'venta', ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
+    tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
+  const ctx = ctxLucia({ contacto: { ...ctxBase().contacto, datos }, verificacion: { resultado: 'verificada' } });
+  const ev = conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion;
+  assert.equal(ev.resultado, 'informacion_incompleta');
+  assert.deepEqual(ev.campos_faltantes, ['nombre']);
+  assert.match(sistemaDe(conv.planificarRespuesta({ ...ctx, evaluacion: ev })), /¿Me puedes facilitar tu nombre completo, por favor\?/);
+});
+
+test('Lucía: antes de agendar presenta la propuesta y espera que quiera continuar', () => {
+  const datos = { nombre: 'Rafael Rivas', telefono: '+573001112233', operacion: 'venta', ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
+    tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
+  const ctx = ctxLucia({ contacto: { ...ctxBase().contacto, datos }, verificacion: { resultado: 'verificada' } });
+  const ev = conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion;
+  assert.equal(ev.resultado, 'calificado');
+  assert.equal(ev.accion, 'presentar_propuesta');
+  const agenda = require('../src/n8n/agenda');
+  assert.deepEqual(agenda.planificarAgenda({ ...ctx, evaluacion: ev, conversacion: { ...ctx.conversacion, agenda: {} } }, null), { paso: null }, 'sin horarios todavía');
+  const prompt = sistemaDe(conv.planificarRespuesta({ ...ctx, evaluacion: ev }));
+  assert.match(prompt, /Javier trabaja la propiedad en exclusiva con una comisión del 5 %/);
+  assert.match(prompt, /¿Hay algún punto que quieras aclarar antes de continuar\?/);
+  assert.match(prompt, /No garantices precio ni plazo/);
+
+  const sigue = { ...ctx, contacto: { ...ctx.contacto, datos: { ...datos, desea_continuar: true } } };
+  assert.equal(conv.evaluarTurno(sigue, evaluarCalificacion).evaluacion.accion, 'ofrecer_agenda', 'quiere continuar: se ofrecen horarios');
+  const noSigue = { ...ctx, contacto: { ...ctx.contacto, datos: { ...datos, desea_continuar: false } } };
+  const evNo = conv.evaluarTurno(noSigue, evaluarCalificacion).evaluacion;
+  assert.match(sistemaDe(conv.planificarRespuesta({ ...noSigue, evaluacion: evNo })), /prefirió no avanzar por ahora/);
+});
+
+test('Lucía: fuera de cobertura pide autorización para una posible referencia, sin prometer', () => {
+  const ctx = ctxLucia({
+    plantillas: { ...ctxBase().plantillas, fuera_cobertura: require('../config/tenants/javier-nunez/plantillas.json').find((p) => p.clave === 'fuera_cobertura').texto },
+    evaluacion: { resultado: 'no_calificado', accion: 'archivar', codigo_motivo: 'cobertura_ciudad' },
+    estado_anterior: 'informacion_incompleta',
+  });
+  const plan = conv.planificarRespuesta(ctx);
+  assert.equal(plan.respuesta_fija.plantilla, 'fuera_cobertura');
+  assert.match(plan.respuesta_fija.texto, /Javier atiende directamente propiedades en Bogotá\. .*¿Nos autorizas a compartir/);
+
+  const despues = (autoriza) => sistemaDe(conv.planificarRespuesta({
+    ...ctx, estado_anterior: 'no_calificado', contacto: { ...ctx.contacto, estado: 'no_calificado', datos: { autoriza_referencia: autoriza } },
+  }));
+  assert.match(despues(true), /si encuentran una opción, podrán gestionar la referencia/);
+  assert.match(despues(false), /no se compartirán/);
+  assert.match(despues(undefined), /autoriza compartir sus datos/);
+  for (const a of [true, false, undefined]) {
+    assert.match(despues(a), /no digas que hay un agente disponible ni que alguien la contactará/);
+    assert.match(despues(a), /necesita alguna aclaración/);
+  }
+});
+
+test('agenda: no ofrece horarios antes de las 9:00 a. m. (hora de Bogotá)', () => {
+  const agenda = require('../src/n8n/agenda');
+  const ghl = require('../src/integraciones/gohighlevel');
+  const ctx = ctxLucia({ integraciones: { calendario: { horarios_a_ofrecer: 4, horarios_por_dia: 4, antelacion_minima_minutos: 0 } } });
+  const body = { '2030-10-21': { slots: ['2030-10-21T08:00:00-05:00', '2030-10-21T09:00:00-05:00', '2030-10-21T23:00:00-05:00'] } };
+  const r = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'));
+  assert.deepEqual(r.ofrecidos, ['2030-10-21T09:00:00-05:00', '2030-10-21T23:00:00-05:00'], 'hora_maxima sin definir: no filtra la tarde');
+  const conMax = { ...ctx, tenant: { ...ctx.tenant, parametros: { ...PARAMS, agenda: { ...PARAMS.agenda, hora_maxima: '18:00' } } } };
+  assert.deepEqual(agenda.interpretarHorarios({ statusCode: 200, body }, conMax, ghl, new Date('2030-10-20T00:00:00Z')).ofrecidos, ['2030-10-21T09:00:00-05:00']);
+});
+
+test('agenda: la cita lleva para Javier el origen, la prioridad y las dudas', () => {
+  const agenda = require('../src/n8n/agenda');
+  const ghl = require('../src/integraciones/gohighlevel');
+  const ctx = ctxLucia({
+    contacto: { ...ctxBase().contacto, ghl_contact_id: 'g1', canal_origen: 'whatsapp', datos: { nombre: 'Rafael Rivas', acepta_preguntas: true, dudas_propuesta: 'Duración de la exclusividad', desea_continuar: true } },
+    conversacion: { ...ctxBase().conversacion, agenda: { ofrecidos: ['2030-10-21T09:00:00-05:00'] } },
+    integraciones: { calendario: { calendar_id: 'cal', location_id: 'loc', modalidades: { llamada: 'phone' } } },
+    evaluacion: { resultado: 'calificado', prioridad: 'alta' },
+  });
+  const desc = agenda.solicitudReserva(ctx, { inicio: '2030-10-21T09:00:00-05:00', modalidad: 'llamada' }, ghl).solicitud.cuerpo.description;
+  assert.match(desc, /^Origen: WhatsApp\nPrioridad: alta\n/);
+  assert.match(desc, /Dudas sobre la propuesta: Duración de la exclusividad/);
+  assert.match(desc, /Quiere avanzar con Javier: sí/);
+  assert.doesNotMatch(desc, /Aceptó responder/);
+});
+
+test('cambio de asistente: el extractor lo detecta y la nueva se presenta', () => {
+  assert.match(conv.solicitudExtraccion(ctxLucia()).messages[0].content, /"cambio_intencion": "comprar"/);
+  assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":{},"cambio_intencion":"comprar"}')).cambio_intencion, 'comprar');
+  assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":{},"cambio_intencion":"otro"}')).cambio_intencion, null);
+  const sonia = ctxLucia({
+    rol: { codigo: 'sonia', nombre_visible: 'Sonia', campos: [], criterios: { campos_obligatorios: [], reglas: [] } },
+    oportunidad: { id: 'o2', anteriores: 1, rol_anterior: 'lucia' },
+    evaluacion: { accion: 'solicitar_datos', campos_faltantes: [] },
+  });
+  assert.match(sistemaDe(conv.planificarRespuesta(sonia)), /preséntate en una frase como Sonia, asistente virtual de Javier Núñez del Toro/);
 });

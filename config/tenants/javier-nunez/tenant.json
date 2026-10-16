@@ -41,9 +41,26 @@
       "dias": 7,
       "destinatarios": []
     },
+    "agenda": {
+      "hora_minima": "09:00",
+      "hora_maxima": null,
+      "encuentros": {
+        "llamada": { "nombre": "tu llamada", "quien_contacta": "{{asesor}} te llamará a este número." },
+        "videollamada": { "nombre": "tu videollamada", "quien_contacta": "{{asesor}} te compartirá el enlace de la videollamada por este medio." },
+        "presencial": { "nombre": "tu visita presencial", "quien_contacta": "{{asesor}} te confirmará por este medio el lugar de la visita." }
+      }
+    },
     "comercial": {
       "asesor": "Javier",
-      "argumento_exclusividad": "Comenta que trabajar la propiedad en exclusividad con JNdelT Real Estate permite cuidarla mejor y que en una conversación breve con Javier pueden mostrarle las diferencias."
+      "asesor_nombre_completo": "Javier Núñez del Toro",
+      "argumento_exclusividad": "Comenta que trabajar la propiedad en exclusiva con Javier permite cuidarla mejor y que en una conversación breve él puede mostrarle las diferencias.",
+      "propuesta": {
+        "exclusiva": true,
+        "comision_pct": 5,
+        "beneficios": [],
+        "video_url": null,
+        "acuerdo_url": null
+      }
     }
   },
   "canales": [

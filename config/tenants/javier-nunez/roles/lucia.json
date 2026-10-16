@@ -5,29 +5,35 @@
   "etiqueta_crm": "agente-lucia",
   "requiere_verificacion_direccion": true,
   "campos": [
-    { "clave": "nombre", "etiqueta": "Nombre", "tipo": "texto", "descripcion": "Nombre de la persona" },
-    { "clave": "telefono", "etiqueta": "Teléfono", "tipo": "texto", "descripcion": "Teléfono en formato internacional. En WhatsApp se toma del canal; en Instagram se pregunta." },
-    { "clave": "email", "etiqueta": "Correo", "tipo": "texto", "descripcion": "Correo electrónico, solo si la persona lo ofrece" },
-    { "clave": "operacion", "etiqueta": "Operación", "tipo": "opcion", "opciones": ["venta", "arriendo"], "descripcion": "venta si quiere vender el inmueble; arriendo si quiere ofrecerlo en arriendo" },
-    { "clave": "ciudad", "etiqueta": "Ciudad", "tipo": "texto", "descripcion": "Ciudad donde está el inmueble" },
-    { "clave": "barrio", "etiqueta": "Sector o barrio", "tipo": "texto", "descripcion": "Sector o barrio del inmueble" },
-    { "clave": "direccion", "etiqueta": "Dirección", "tipo": "texto", "descripcion": "Dirección del inmueble tal como la escribe la persona" },
-    { "clave": "tipo_inmueble", "etiqueta": "Tipo de inmueble", "tipo": "opcion", "opciones": ["apartamento", "casa", "lote", "local", "oficina", "bodega", "otro"] },
-    { "clave": "relacion_inmueble", "etiqueta": "Relación con el inmueble", "tipo": "opcion", "opciones": ["propietario", "copropietario", "apoderado", "familiar", "conocido", "otro"] },
-    { "clave": "intencion_venta", "etiqueta": "Intención de vender o arrendar", "tipo": "booleano", "descripcion": "true solo si la persona expresa que quiere vender o arrendar el inmueble, o evaluar hacerlo" },
-    { "clave": "plazo_meses", "etiqueta": "Plazo para vender o arrendar (meses)", "tipo": "numero", "descripcion": "En cuántos meses espera concretar la operación. 'Este mes' o 'ya' = 1; 'sin prisa' o 'solo explorando' = 12." }
+    {"clave": "nombre", "etiqueta": "Nombre completo", "tipo": "texto", "descripcion": "Nombre y apellido de la persona", "palabras_minimas": 2},
+    {"clave": "telefono", "etiqueta": "Teléfono", "tipo": "texto", "descripcion": "Teléfono en formato internacional. En WhatsApp se toma del canal; en Instagram se pregunta."},
+    {"clave": "email", "etiqueta": "Correo", "tipo": "texto", "descripcion": "Correo electrónico, solo si la persona lo ofrece"},
+    {"clave": "operacion", "etiqueta": "Operación", "tipo": "opcion", "opciones": ["venta", "arriendo"], "descripcion": "venta si quiere vender el inmueble; arriendo si quiere ofrecerlo en arriendo"},
+    {"clave": "ciudad", "etiqueta": "Ciudad", "tipo": "texto", "descripcion": "Ciudad o municipio donde está el inmueble, sin abreviaturas como 'D.C.'"},
+    {"clave": "barrio", "etiqueta": "Sector o barrio", "tipo": "texto", "descripcion": "Sector o barrio del inmueble"},
+    {"clave": "direccion", "etiqueta": "Dirección", "tipo": "texto", "descripcion": "Dirección del inmueble tal como la escribe la persona"},
+    {"clave": "tipo_inmueble", "etiqueta": "Tipo de inmueble", "tipo": "opcion", "opciones": ["apartamento", "casa", "lote", "local", "oficina", "bodega", "otro"]},
+    {"clave": "relacion_inmueble", "etiqueta": "Relación con el inmueble", "tipo": "opcion", "opciones": ["propietario", "copropietario", "apoderado", "familiar", "conocido", "otro"]},
+    {"clave": "intencion_venta", "etiqueta": "Intención de vender o arrendar", "tipo": "booleano", "descripcion": "true solo si la persona expresa que quiere vender o arrendar el inmueble, o evaluar hacerlo"},
+    {"clave": "plazo_meses", "etiqueta": "Plazo para vender o arrendar (meses)", "tipo": "numero", "descripcion": "En cuántos meses espera concretar la operación. 'Este mes' o 'ya' = 1; 'sin prisa' o 'solo explorando' = 12."},
+    {"clave": "acepta_preguntas", "etiqueta": "Aceptó responder unas preguntas", "tipo": "booleano", "descripcion": "Solo después de que se le preguntó si se le pueden hacer unas preguntas breves: true si acepta o responde dando datos; false si dice que ahora no tiene tiempo"},
+    {"clave": "autoriza_referencia", "etiqueta": "Autoriza compartir sus datos para una referencia", "tipo": "booleano", "descripcion": "Solo si se le preguntó por una posible referencia a un agente de otra zona: true si autoriza compartir sus datos de contacto y de la propiedad; false si no"},
+    {"clave": "dudas_propuesta", "etiqueta": "Dudas sobre la propuesta", "tipo": "texto", "descripcion": "Dudas que expresó sobre la forma de trabajo, la exclusividad, la comisión o el acuerdo, resumidas en una frase que incluya las anteriores"},
+    {"clave": "solicita_acuerdo", "etiqueta": "Pidió el borrador del acuerdo", "tipo": "booleano", "descripcion": "true si pidió ver el borrador del acuerdo o del contrato"},
+    {"clave": "desea_continuar", "etiqueta": "Quiere avanzar con Javier", "tipo": "booleano", "descripcion": "Solo después de que se le explicó cómo trabaja Javier: true si dice que quiere continuar o agendar; false si dice que no quiere avanzar por ahora. Una duda no es un no."}
   ],
   "criterios": {
-    "campos_obligatorios": ["nombre", "telefono", "operacion", "ciudad", "barrio", "direccion", "tipo_inmueble", "relacion_inmueble", "intencion_venta", "plazo_meses"],
+    "campos_obligatorios": ["ciudad", "nombre", "telefono", "operacion", "tipo_inmueble", "barrio", "plazo_meses", "relacion_inmueble", "intencion_venta", "direccion"],
     "reglas": [
-      { "id": "intencion_operacion", "campo": "intencion_venta", "operador": "igual", "valor": true, "motivo": "No manifestó intención de vender o arrendar" },
-      { "id": "relacion_valida", "campo": "relacion_inmueble", "operador": "en", "valor": ["propietario", "copropietario", "apoderado"], "motivo": "La relación declarada con el inmueble no cumple los criterios" },
-      { "id": "cobertura_ciudad", "campo": "ciudad", "operador": "en", "parametro": "cobertura.ciudades", "motivo": "El inmueble está fuera de la zona de cobertura" },
-      { "id": "tipo_inmueble", "campo": "tipo_inmueble", "operador": "en", "parametro": "cobertura.tipos_inmueble", "motivo": "El tipo de inmueble no se atiende" }
+      {"id": "intencion_operacion", "campo": "intencion_venta", "operador": "igual", "valor": true, "motivo": "No manifestó intención de vender o arrendar"},
+      {"id": "relacion_valida", "campo": "relacion_inmueble", "operador": "en", "valor": ["propietario", "copropietario", "apoderado"], "motivo": "La relación declarada con el inmueble no cumple los criterios"},
+      {"id": "cobertura_ciudad", "campo": "ciudad", "operador": "en", "parametro": "cobertura.ciudades", "motivo": "El inmueble está fuera de la cobertura directa", "temprana": true},
+      {"id": "tipo_inmueble", "campo": "tipo_inmueble", "operador": "en", "parametro": "cobertura.tipos_inmueble", "motivo": "El tipo de inmueble no se atiende", "temprana": true}
     ],
-    "prioridad": { "campo": "plazo_meses", "parametro": "prioridad.alta_hasta_meses" }
+    "prioridad": {"campo": "plazo_meses", "parametro": "prioridad.alta_hasta_meses"}
   },
   "pendientes": [
-    "Aprobar los criterios de relación válida con la propiedad (valor provisional: propietario, copropietario, apoderado)."
+    "Aprobar los criterios de relación válida con la propiedad (valor provisional: propietario, copropietario, apoderado).",
+    "Ciudades con posibilidad de referencia y agentes disponibles (hoy ninguno confirmado; Chía y La Calera no están aprobadas)."
   ]
 }

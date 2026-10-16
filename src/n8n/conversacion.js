@@ -65,7 +65,30 @@ function valoresPrompt(ctx) {
     canal: NOMBRE_CANAL[ctx.canal.tipo] || ctx.canal.tipo,
     asesor: comercial.asesor || 'un asesor',
     argumento_exclusividad: comercial.argumento_exclusividad || '',
+    ciudades_cobertura: listaHumana(((ctx.tenant.parametros || {}).cobertura || {}).ciudades || []) || 'su zona de cobertura',
+    propuesta: textoPropuesta(comercial.propuesta, comercial.asesor || 'el asesor'),
   };
+}
+
+/** A nombre de quién se presenta la asistente: parametros.comercial.asesor_nombre_completo o la marca. */
+function representado(ctx) {
+  const c = (ctx.tenant.parametros && ctx.tenant.parametros.comercial) || {};
+  return c.asesor_nombre_completo || ctx.tenant.nombre;
+}
+
+function listaHumana(items) {
+  const l = items.filter(Boolean);
+  return l.length <= 1 ? (l[0] || '') : `${l.slice(0, -1).join(', ')} y ${l.at(-1)}`;
+}
+
+/** Propuesta comercial aprobada (parametros.comercial.propuesta) en una o dos frases. */
+function textoPropuesta(p, asesor) {
+  if (!p) return 'aún no hay una propuesta aprobada; si preguntan por condiciones, explica que las aclara el asesor.';
+  const partes = [];
+  if (p.exclusiva) partes.push(`${asesor} trabaja la propiedad en exclusiva`);
+  if (typeof p.comision_pct === 'number') partes.push(`con una comisión del ${p.comision_pct} %`);
+  const beneficios = (p.beneficios || []).filter(Boolean);
+  return `${partes.join(' ') || `${asesor} explica sus condiciones en la llamada`}.${beneficios.length ? ` Beneficios aprobados: ${beneficios.join('; ')}.` : ' No hay otros beneficios aprobados para mencionar.'}`;
 }
 
 function mensajesHistorial(ctx) {
@@ -139,6 +162,12 @@ function modalidades(ctx) {
 
 const CAMPOS_DE_LA_PERSONA = new Set(['nombre', 'telefono', 'email']);
 
+// Necesidad que atiende la otra asistente: el sistema cambia de rol (app.cambiar_rol).
+const CAMBIO_INTENCION = {
+  lucia: { valor: 'comprar', instruccion: 'Si en su ÚLTIMO mensaje la persona dice que en realidad quiere comprar o tomar en arriendo una propiedad (no vender ni ofrecer la suya), agrega "cambio_intencion": "comprar".' },
+  sonia: { valor: 'vender', instruccion: 'Si en su ÚLTIMO mensaje la persona dice que en realidad quiere vender u ofrecer en arriendo una propiedad suya (no comprar ni buscar), agrega "cambio_intencion": "vender".' },
+};
+
 /** El caso actual ya tiene datos de una propiedad (o búsqueda) o ya se evaluó. */
 function tienePropiedad(ctx) {
   const datos = ctx.contacto.datos || {};
@@ -154,13 +183,16 @@ function solicitudExtraccion(ctx) {
     conHorarios
       ? 'Devuelve solo JSON con la forma {"datos": {...}, "seleccion": {...} | null}.'
       : 'Devuelve solo JSON con la forma {"datos": {...}}.',
-    'Puedes agregar "nueva_propiedad" y "misma_cita" solo en los casos que se indican abajo.',
+    'Puedes agregar "nueva_propiedad", "misma_cita" y "cambio_intencion" solo en los casos que se indican abajo.',
     'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',
     'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',
     ...(tienePropiedad(ctx) ? [
       `Ya hay ${ctx.rol.codigo === 'sonia' ? 'una búsqueda registrada' : 'una propiedad registrada'}: son los datos ya registrados de abajo.`,
       'Si en su ÚLTIMO mensaje la persona habla de OTRA propiedad distinta (otro inmueble para vender o arrendar, u otra búsqueda), agrega "nueva_propiedad": true y en "datos" incluye solo lo que dijo de esa nueva propiedad.',
       'Si solo corrige o completa un dato de la misma propiedad, no agregues "nueva_propiedad".',
+    ] : []),
+    ...(CAMBIO_INTENCION[ctx.rol.codigo] ? [
+      CAMBIO_INTENCION[ctx.rol.codigo].instruccion,
     ] : []),
     ...(tienePropiedad(ctx) || (ctx.oportunidad && ctx.oportunidad.anteriores > 0) ? [
       'Si la persona pide de forma explícita que esta propiedad se revise en la reunión o cita que ya tiene agendada, agrega "misma_cita": true.',
@@ -201,7 +233,8 @@ function interpretarExtraccion(respuesta) {
   const seleccion = r.json && esObjeto(r.json.seleccion) ? r.json.seleccion : null;
   const nueva_propiedad = Boolean(r.json && r.json.nueva_propiedad === true);
   const misma_cita = Boolean(r.json && r.json.misma_cita === true);
-  return { datos, seleccion, nueva_propiedad, misma_cita, eventos: [] };
+  const cambio_intencion = r.json && ['comprar', 'vender'].includes(r.json.cambio_intencion) ? r.json.cambio_intencion : null;
+  return { datos, seleccion, nueva_propiedad, misma_cita, cambio_intencion, eventos: [] };
 }
 
 // --- Evaluación ----------------------------------------------------------------------
@@ -220,6 +253,11 @@ function evaluarTurno(ctx, evaluarCalificacion) {
     if (evaluacion.resultado === 'calificado' && ctx.oportunidad && ctx.oportunidad.cita_compartida) {
       evaluacion.accion = 'ofrecer_agenda';
     }
+    exigirPalabrasMinimas(ctx, evaluacion);
+    // Antes de ofrecer horarios, la persona conoce la propuesta y dice que quiere continuar.
+    if (evaluacion.accion === 'ofrecer_agenda' && pidePropuesta(ctx) && (ctx.contacto.datos || {}).desea_continuar !== true) {
+      evaluacion.accion = 'presentar_propuesta';
+    }
     return { evaluacion, eventos: [] };
   } catch (e) {
     // Configuración inválida: no se califica ni se descarta a nadie.
@@ -227,6 +265,34 @@ function evaluarTurno(ctx, evaluarCalificacion) {
       evaluacion: { resultado: 'informacion_incompleta', accion: 'solicitar_datos', campos_faltantes: [], reglas: [], motivo: e.message, codigo_motivo: 'error_configuracion' },
       eventos: [evento('error', null, 'evaluar_calificacion', e.message)],
     };
+  }
+}
+
+const ESTADOS_CON_CITA = new Set(['seleccion_pendiente_confirmacion', 'cita_confirmada', 'entregado_asesor', 'cita_reprogramada', 'atencion_comercial_iniciada']);
+
+const tieneCampo = (ctx, clave) => (ctx.rol.campos || []).some((c) => c.clave === clave);
+
+/** El rol presenta la propuesta antes de agendar (campo desea_continuar), salvo que ya haya cita. */
+function pidePropuesta(ctx) {
+  return tieneCampo(ctx, 'desea_continuar')
+    && !(ctx.oportunidad && ctx.oportunidad.cita_compartida)
+    && !ctx.cita
+    && !ESTADOS_CON_CITA.has(ctx.contacto.estado);
+}
+
+/** Campo obligatorio con palabras_minimas (p. ej. nombre completo): con menos palabras, falta. */
+function exigirPalabrasMinimas(ctx, ev) {
+  if (ev.resultado === 'no_calificado') return;
+  const obligatorios = ((ctx.rol.criterios || {}).campos_obligatorios || []).map((c) => (typeof c === 'string' ? c : c.campo));
+  const cortos = (ctx.rol.campos || []).filter((c) => c.palabras_minimas && obligatorios.includes(c.clave)).filter((c) => {
+    const v = (ctx.contacto.datos || {})[c.clave];
+    return typeof v === 'string' && v.trim() && v.trim().split(/\s+/).length < c.palabras_minimas;
+  }).map((c) => c.clave);
+  if (!cortos.length) return;
+  const faltan = new Set([...(ev.campos_faltantes || []), ...cortos]);
+  ev.campos_faltantes = obligatorios.filter((c) => faltan.has(c));
+  if (ev.resultado === 'calificado') {
+    Object.assign(ev, { resultado: 'informacion_incompleta', accion: 'solicitar_datos', prioridad: null, codigo_motivo: 'campos_faltantes', motivo: `Faltan campos obligatorios: ${ev.campos_faltantes.join(', ')}` });
   }
 }
 
@@ -244,6 +310,16 @@ const ESTADO_YA_INFORMADO = {
   archivar: 'no_calificado',
   nutrir: 'nutricion',
 };
+
+/** Nombre del encuentro y quién contacta a quién, según la modalidad (parametros.agenda.encuentros). */
+function encuentroDe(ctx, modalidad) {
+  const e = ((((ctx.tenant.parametros || {}).agenda || {}).encuentros || {})[modalidad]) || {};
+  const asesor = valoresPrompt(ctx).asesor;
+  return {
+    nombre: e.nombre || `tu ${modalidad || 'reunión'}`,
+    quien_contacta: rellenar(e.quien_contacta || '', { asesor }),
+  };
+}
 
 function nutreNoCalificados(ctx) {
   const n = ctx.tenant.parametros && ctx.tenant.parametros.nutricion;
@@ -287,15 +363,70 @@ function instruccionAgenda(ctx) {
   return 'La persona ya calificó. Indica que el siguiente paso es reservar con un asesor. No inventes horarios ni digas que la cita está confirmada.';
 }
 
+/**
+ * Al empezar, Lucía pide permiso antes de las preguntas (campo acepta_preguntas).
+ * Solo en los primeros mensajes: si la persona ya dio datos o siguió la
+ * conversación, no se vuelve a pedir.
+ */
+function instruccionPermiso(ctx) {
+  if (!tieneCampo(ctx, 'acepta_preguntas') || ctx.retorno) return null;
+  const acepta = (ctx.contacto.datos || {}).acepta_preguntas;
+  if (acepta === false) {
+    return 'La persona dijo que ahora no tiene tiempo: respétalo, dile que puede escribir cuando le resulte conveniente para retomar y no hagas preguntas.';
+  }
+  const entrantes = (ctx.historial || []).filter((m) => m.direccion === 'entrante').length;
+  if (acepta === undefined && entrantes <= 2) {
+    return 'Pide permiso para hacerle unas preguntas breves sobre su propiedad, como en la plantilla de presentación, con una sola pregunta. No pidas ningún dato todavía; si ya contó algo, reconócelo.';
+  }
+  return null;
+}
+
+const fueraDeCobertura = (ev) => String(ev.codigo_motivo || '').split(',').includes('cobertura_ciudad');
+
+function instruccionReferencia(ctx) {
+  const datos = ctx.contacto.datos || {};
+  const cierre = 'Pregunta si necesita alguna aclaración. No ofrezcas una llamada con el asesor, no digas que hay un agente disponible ni que alguien la contactará.';
+  if (datos.autoriza_referencia === true) {
+    return `La persona autorizó compartir sus datos para una posible referencia. Agradécele y explica que consultarán si cuentan con un colega en esa zona y que, si encuentran una opción, podrán gestionar la referencia. ${cierre}`;
+  }
+  if (datos.autoriza_referencia === false) {
+    return `La persona no autorizó compartir sus datos: respétalo y confírmale que no se compartirán. ${cierre}`;
+  }
+  return `La propiedad está fuera de la cobertura directa (${valoresPrompt(ctx).ciudades_cobertura}). Responde con cordialidad a lo que diga y pregúntale si autoriza compartir sus datos de contacto y la información de la propiedad para gestionar una posible referencia con un colega de la zona. ${cierre}`;
+}
+
+function instruccionPropuesta(ctx) {
+  const v = valoresPrompt(ctx);
+  const datos = ctx.contacto.datos || {};
+  if (datos.desea_continuar === false) {
+    return 'La persona prefirió no avanzar por ahora: respétalo sin insistir, dile que puede escribir cuando quiera retomar y no ofrezcas horarios.';
+  }
+  return [
+    'La persona cumple los criterios. Antes de ofrecer horarios debe entender cómo trabaja el asesor y decir que quiere continuar.',
+    `Si aún no lo explicaste en esta conversación, explícalo en dos frases: ${v.propuesta} No garantices precio ni plazo de venta.`,
+    'Si ya lo explicaste, responde sus dudas solo con esa información; si algo requiere el criterio del asesor, di que lo registras y que él lo aclarará.',
+    datos.solicita_acuerdo === true ? 'Pidió el borrador del acuerdo: no está disponible por este medio; dile que registras la solicitud y que el asesor lo revisa con ella.' : null,
+    'Termina con una sola pregunta: "¿Hay algún punto que quieras aclarar antes de continuar?" o, si ya resolviste sus dudas, si desea continuar para agendar una llamada con el asesor.',
+    'No ofrezcas horarios en este mensaje.',
+  ].filter(Boolean).join(' ').replace(/el asesor/g, v.asesor);
+}
+
 function instruccionSiguientePaso(ctx, ev) {
   const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));
   switch (ev.accion) {
     case 'solicitar_datos': {
+      const permiso = instruccionPermiso(ctx);
+      if (permiso) return permiso;
       const siguiente = (ev.campos_faltantes || [])[0];
+      if (siguiente === 'nombre' && (ctx.contacto.datos || {}).nombre) {
+        return 'Pide su nombre completo con esta frase: "¿Me puedes facilitar tu nombre completo, por favor?"';
+      }
       return siguiente
         ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`
         : 'Pide la información que falte para continuar.';
     }
+    case 'presentar_propuesta':
+      return instruccionPropuesta(ctx);
     case 'verificar_direccion':
       return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';
     case 'reintentar_verificacion':
@@ -303,6 +434,7 @@ function instruccionSiguientePaso(ctx, ev) {
     case 'ofrecer_agenda':
       return instruccionAgenda(ctx);
     case 'archivar':
+      if (fueraDeCobertura(ev)) return instruccionReferencia(ctx);
       return 'Ya se le informó a la persona que su caso no cumple las condiciones para continuar. Responde con cordialidad y brevedad a lo que diga. No expliques los criterios internos, no pidas más datos ni reabras la calificación.';
     case 'nutrir':
       return 'La persona cumple los criterios pero no tiene prisa; ya se le informó que quedó registrada. Responde con cordialidad y brevedad a lo que diga. No ofrezcas ni agendes citas ni horarios. Si dice que ahora sí quiere avanzar pronto, pregúntale en cuánto tiempo quiere concretar.';
@@ -376,12 +508,15 @@ function solicitudRedaccion(ctx) {
     ctx.conversacion.identificado_como_virtual || !ctx.plantillas.inicio
       ? null
       : ctx.retorno
-        ? `- Preséntate en pocas palabras como ${ctx.rol.nombre_visible}, asistente virtual de ${ctx.tenant.nombre}.`
-        : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: "${ctx.plantillas.inicio}"`,
+        ? `- Preséntate en pocas palabras como ${ctx.rol.nombre_visible}, asistente virtual de ${representado(ctx)}.`
+        : `- Preséntate como en esta plantilla, sin repetir preguntas ya respondidas: "${ctx.plantillas.inicio}". Si la plantilla termina en una pregunta distinta del siguiente paso, omítela: haz una sola pregunta.`,
     nombre
       ? `- Dirígete a la persona como "${nombre}". No le preguntes su nombre.`
       : '- Aún no sabes cómo se llama la persona: si el siguiente dato no es otro, pregúntale su nombre de forma natural.',
     `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,
+    ctx.oportunidad && ctx.oportunidad.rol_anterior && ctx.oportunidad.rol_anterior !== ctx.rol.codigo
+      ? `- La persona venía hablando con otra asistente sobre otra necesidad y ahora la atiendes tú. Si aún no lo hiciste, preséntate en una frase como ${ctx.rol.nombre_visible}, asistente virtual de ${representado(ctx)}, y continúa con el siguiente paso.`
+      : null,
     ctx.oportunidad && ctx.oportunidad.anteriores > 0
       ? '- La persona ya tuvo otro caso con nosotros (otra propiedad o búsqueda). Los datos registrados son solo los de este caso: no los mezcles con lo hablado antes ni digas que una dirección nueva ya está registrada.'
       : null,
@@ -403,7 +538,8 @@ function solicitudRedaccion(ctx) {
  */
 function planificarRespuesta(ctx) {
   const p = ctx.plantillas || {};
-  const fija = (clave, eventos = [], valores = {}) => ({ respuesta_fija: { texto: rellenar(p[clave], valores), plantilla: clave }, solicitud_llm: null, eventos });
+  const comunes = ctx.rol || ctx.tenant ? { asesor: valoresPrompt(ctx).asesor, ciudades_cobertura: valoresPrompt(ctx).ciudades_cobertura } : {};
+  const fija = (clave, eventos = [], valores = {}) => ({ respuesta_fija: { texto: rellenar(p[clave], { ...comunes, ...valores }), plantilla: clave }, solicitud_llm: null, eventos });
 
   if (!ctx.rol) {
     if (p.seleccion_intencion) return fija('seleccion_intencion');
@@ -411,12 +547,18 @@ function planificarRespuesta(ctx) {
   }
 
   // Quien regresa tras días sin escribir recibe un saludo redactado, no una plantilla.
-  if (ctx.retorno) return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };
+  // El primer mensaje del rol también se redacta: saluda, se presenta y, si aplica, pide permiso.
+  if (ctx.retorno || !ctx.conversacion.identificado_como_virtual) {
+    return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };
+  }
 
   const ra = ctx.resultado_agenda;
   const claveAgenda = ra && PLANTILLA_POR_RESULTADO_AGENDA[ra.tipo];
   if (claveAgenda && p[claveAgenda]) {
+    const encuentro = encuentroDe(ctx, ra.modalidad);
     return fija(claveAgenda, [], {
+      encuentro: encuentro.nombre,
+      quien_contacta: encuentro.quien_contacta,
       horarios_disponibles: ra.texto,
       horarios_alternativos: ra.texto,
       fecha: ra.fecha,
@@ -431,6 +573,7 @@ function planificarRespuesta(ctx) {
   const yaInformado = ESTADO_YA_INFORMADO[ev.accion] && ctx.estado_anterior === ESTADO_YA_INFORMADO[ev.accion];
   if (clave && p[clave] && !yaInformado) {
     // No calificados: si el tenant los nutre, mensaje cordial + dossier en vez de solo "no cumples".
+    if (ev.accion === 'archivar' && fueraDeCobertura(ev) && p.fuera_cobertura) return fija('fuera_cobertura');
     const nutrirNoCalificado = ev.accion === 'archivar' && nutreNoCalificados(ctx) && p.no_calificado_nutricion;
     const plan = fija(nutrirNoCalificado ? 'no_calificado_nutricion' : clave);
     if ((ev.accion === 'nutrir' || nutrirNoCalificado) && dossier(ctx)) plan.respuesta_fija.documento = dossier(ctx);

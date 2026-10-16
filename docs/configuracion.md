@@ -12,6 +12,10 @@ Todo umbral de negocio vive en `config/tenants/<tenant>/tenant.json` → `parame
 | `dossier.lucia` / `dossier.sonia` | `null` | `{ "url": "https://…/dossier.pdf", "nombre_archivo": "JNdelT.pdf" }`: se envía automáticamente a prioridad baja (archivo en WhatsApp, enlace en Instagram). La URL debe ser pública. |
 | `nutricion.incluir_no_calificados` | `true` | Los no calificados reciben la plantilla `no_calificado_nutricion` (y el dossier, si existe) en lugar de solo "no cumples las condiciones". |
 | `conversacion.cierre_inactividad_horas` | `48` | Horas sin mensajes tras las que se cierra la conversación. Si la persona escribe después, el agente la saluda por su nombre, le recuerda lo pendiente (cita, agendamiento, datos) y pregunta en qué la puede ayudar. |
+| `comercial.asesor_nombre_completo` | `"Javier Núñez del Toro"` | A nombre de quién se presentan Lucía y Sonia ("asistente virtual de Javier Núñez del Toro"). |
+| `comercial.propuesta` | exclusiva, comisión 5 %, sin beneficios, sin video ni acuerdo | Lo que Lucía explica antes de agendar. `beneficios` (lista de textos aprobados), `video_url` y `acuerdo_url` están vacíos hasta que Javier los apruebe; mientras tanto el agente no los menciona. |
+| `agenda.hora_minima` / `agenda.hora_maxima` | `"09:00"` / `null` | Horario en que se ofrecen llamadas (hora de Bogotá), además de la disponibilidad del calendario. |
+| `agenda.encuentros` | llamada, videollamada, presencial | Cómo se nombra cada modalidad en la confirmación y quién contacta a quién. **Por validar con Javier.** |
 | `comercial.asesor` | `"Javier"` | Nombre con el que el agente se refiere al asesor en las objeciones ("eso lo revisa Javier en la reunión"). |
 | `comercial.argumento_exclusividad` | texto | Instrucción para responder "ya tengo agencia o asesor". |
 | `reporte_no_calificados.activo` | `true` | Incluye al tenant en el reporte semanal. |
@@ -49,3 +53,12 @@ Cada propiedad (o búsqueda) es una **oportunidad** con sus propios datos, estad
 - **En la misma reunión:** si la persona pide explícitamente revisarla en la reunión que ya tiene agendada, la nueva propiedad se califica igual pero no se ofrecen horarios. Al calificar queda con esa reunión, el agente lo confirma y se deja una nota para el asesor en la ficha del contacto en GoHighLevel con los datos de la propiedad.
 
 El extractor de datos decide cuándo es otra propiedad y cuándo pide la misma reunión. Corregir un dato de la misma propiedad no abre un caso nuevo.
+
+## Conversación de Lucía (revisión del 16 oct 2026)
+
+1. **Bienvenida:** saluda, agradece, se presenta como asistente virtual de Javier Núñez del Toro y pide permiso para unas preguntas breves (`acepta_preguntas`). Si la persona no tiene tiempo, lo respeta y ofrece retomar.
+2. **Orden de los datos:** ciudad primero, luego nombre completo (si solo da el primer nombre, lo pide completo), operación, tipo de inmueble, barrio, plazo, relación con el inmueble y la dirección al final. No pide el correo.
+3. **Cobertura temprana:** las reglas marcadas `"temprana": true` (cobertura y tipo de inmueble) se aplican apenas se conoce su dato. Fuera de cobertura no se sigue calificando: se envía `fuera_cobertura`, se pide autorización para una posible referencia (`autoriza_referencia`) y no se promete ningún contacto. El reporte semanal muestra la autorización como "Autorizada (pendiente)".
+4. **Propuesta antes de agendar:** quien califica con prioridad alta primero escucha cómo trabaja Javier (`comercial.propuesta`) y se le pregunta si tiene dudas. Los horarios se ofrecen solo cuando dice que quiere continuar (`desea_continuar`). Las dudas (`dudas_propuesta`) y la solicitud del borrador del acuerdo (`solicita_acuerdo`) quedan registradas y van en la descripción de la cita.
+5. **Agenda:** solo horarios desde `agenda.hora_minima`. La confirmación indica fecha, hora de Colombia, modalidad y quién contacta a quién. La cita lleva para Javier el origen, la prioridad y los datos del caso.
+6. **Cambio de asistente:** si quien habla con Lucía quiere comprar (o con Sonia quiere vender), pasa a la otra en un caso nuevo, con la misma ficha de contacto.

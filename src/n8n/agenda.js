@@ -103,6 +103,29 @@ function solicitudHorarios(ctx, ghl, ahora = new Date()) {
   }));
 }
 
+const minutosDe = (hhmm) => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ''));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/**
+ * Horario de atención (parametros.agenda.hora_minima / hora_maxima, "HH:MM" en
+ * la zona del tenant): no se ofrecen horarios fuera de él aunque el calendario
+ * los tenga libres.
+ */
+function dentroDelHorario(ctx) {
+  const a = ((ctx.tenant.parametros || {}).agenda) || {};
+  const min = minutosDe(a.hora_minima);
+  const max = minutosDe(a.hora_maxima);
+  if (min === null && max === null) return () => true;
+  const formato = new Intl.DateTimeFormat('en-GB', { timeZone: ctx.tenant.zona_horaria, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  return (iso) => {
+    const [h, m] = formato.format(new Date(iso)).split(':').map(Number);
+    const t = h * 60 + m;
+    return (min === null || t >= min) && (max === null || t <= max);
+  };
+}
+
 /** Horarios a ofrecer (solo los que devolvió el calendario, AC 30). */
 function interpretarHorarios(respuesta, ctx, ghl, ahora = new Date()) {
   const r = respuesta || {};
@@ -114,15 +137,27 @@ function interpretarHorarios(respuesta, ctx, ghl, ahora = new Date()) {
     antelacionMinutos: c.antelacion_minima_minutos ?? 60,
     maximo: c.horarios_a_ofrecer || 4,
     maximoPorDia: c.horarios_por_dia || 2,
+    admitir: dentroDelHorario(ctx),
   });
   return { ofrecidos, texto: ghl.textoHorarios(ofrecidos, ctx.tenant.zona_horaria), error: null };
 }
 
+const CANAL = { whatsapp: 'WhatsApp', instagram_dm: 'Instagram', facebook_messenger: 'Messenger' };
+// Datos de control de la conversación que no aportan al asesor.
+const SIN_RESUMEN = new Set(['acepta_preguntas']);
+
+/** Resumen para el asesor: origen, prioridad y los datos del caso, con sus etiquetas. */
 function resumenDatos(ctx) {
   const etiquetas = new Map((ctx.rol.campos || []).map((c) => [c.clave, c.etiqueta]));
-  return Object.entries(ctx.contacto.datos || {})
-    .map(([k, v]) => `${etiquetas.get(k) || k}: ${v}`)
-    .join('\n');
+  const texto = (v) => (v === true ? 'sí' : v === false ? 'no' : v);
+  const prioridad = ctx.evaluacion && ctx.evaluacion.prioridad;
+  return [
+    `Origen: ${CANAL[ctx.contacto.canal_origen || ctx.canal.tipo] || ctx.canal.tipo}`,
+    prioridad ? `Prioridad: ${prioridad}` : null,
+    ...Object.entries(ctx.contacto.datos || {})
+      .filter(([k]) => !SIN_RESUMEN.has(k))
+      .map(([k, v]) => `${etiquetas.get(k) || k}: ${texto(v)}`),
+  ].filter(Boolean).join('\n');
 }
 
 function solicitudReserva(ctx, plan, ghl) {
