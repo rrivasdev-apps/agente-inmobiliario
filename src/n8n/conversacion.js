@@ -137,6 +137,15 @@ function modalidades(ctx) {
   return m && typeof m === 'object' ? Object.keys(m) : [];
 }
 
+const CAMPOS_DE_LA_PERSONA = new Set(['nombre', 'telefono', 'email']);
+
+/** El caso actual ya tiene datos de una propiedad (o búsqueda) o ya se evaluó. */
+function tienePropiedad(ctx) {
+  const datos = ctx.contacto.datos || {};
+  return Object.keys(datos).some((k) => !CAMPOS_DE_LA_PERSONA.has(k))
+    || !['en_calificacion', 'informacion_incompleta'].includes(ctx.contacto.estado);
+}
+
 function solicitudExtraccion(ctx) {
   const agenda = ctx.conversacion.agenda || {};
   const conHorarios = Array.isArray(agenda.ofrecidos) && agenda.ofrecidos.length > 0;
@@ -145,8 +154,17 @@ function solicitudExtraccion(ctx) {
     conHorarios
       ? 'Devuelve solo JSON con la forma {"datos": {...}, "seleccion": {...} | null}.'
       : 'Devuelve solo JSON con la forma {"datos": {...}}.',
+    'Puedes agregar "nueva_propiedad" y "misma_cita" solo en los casos que se indican abajo.',
     'Incluye únicamente claves de esta lista y solo valores que la persona dijo de forma explícita.',
     'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',
+    ...(tienePropiedad(ctx) ? [
+      `Ya hay ${ctx.rol.codigo === 'sonia' ? 'una búsqueda registrada' : 'una propiedad registrada'}: son los datos ya registrados de abajo.`,
+      'Si en su ÚLTIMO mensaje la persona habla de OTRA propiedad distinta (otro inmueble para vender o arrendar, u otra búsqueda), agrega "nueva_propiedad": true y en "datos" incluye solo lo que dijo de esa nueva propiedad.',
+      'Si solo corrige o completa un dato de la misma propiedad, no agregues "nueva_propiedad".',
+    ] : []),
+    ...(tienePropiedad(ctx) || (ctx.oportunidad && ctx.oportunidad.anteriores > 0) ? [
+      'Si la persona pide de forma explícita que esta propiedad se revise en la reunión o cita que ya tiene agendada, agrega "misma_cita": true.',
+    ] : []),
     'Campos:',
     ...ctx.rol.campos.map(describirCampo),
     '',
@@ -181,7 +199,9 @@ function interpretarExtraccion(respuesta) {
   const esObjeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
   const datos = r.json && esObjeto(r.json.datos) ? r.json.datos : {};
   const seleccion = r.json && esObjeto(r.json.seleccion) ? r.json.seleccion : null;
-  return { datos, seleccion, eventos: [] };
+  const nueva_propiedad = Boolean(r.json && r.json.nueva_propiedad === true);
+  const misma_cita = Boolean(r.json && r.json.misma_cita === true);
+  return { datos, seleccion, nueva_propiedad, misma_cita, eventos: [] };
 }
 
 // --- Evaluación ----------------------------------------------------------------------
@@ -189,16 +209,18 @@ function interpretarExtraccion(respuesta) {
 /** Ejecuta el evaluador determinista con la configuración del rol. */
 function evaluarTurno(ctx, evaluarCalificacion) {
   try {
-    return {
-      evaluacion: evaluarCalificacion({
-        criterios: ctx.rol.criterios,
-        requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,
-        datos: ctx.contacto.datos,
-        verificacionDireccion: ctx.verificacion,
-        parametros: ctx.tenant.parametros || {},
-      }),
-      eventos: [],
-    };
+    const evaluacion = evaluarCalificacion({
+      criterios: ctx.rol.criterios,
+      requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,
+      datos: ctx.contacto.datos,
+      verificacionDireccion: ctx.verificacion,
+      parametros: ctx.tenant.parametros || {},
+    });
+    // Una propiedad que se revisa en una reunión ya agendada no se nutre: va a esa reunión.
+    if (evaluacion.resultado === 'calificado' && ctx.oportunidad && ctx.oportunidad.cita_compartida) {
+      evaluacion.accion = 'ofrecer_agenda';
+    }
+    return { evaluacion, eventos: [] };
   } catch (e) {
     // Configuración inválida: no se califica ni se descarta a nadie.
     return {
@@ -246,6 +268,10 @@ const PLANTILLA_POR_RESULTADO_AGENDA = {
 function instruccionAgenda(ctx) {
   const agenda = ctx.conversacion.agenda || {};
   const cita = ctx.cita;
+  const compartida = ctx.oportunidad && ctx.oportunidad.cita_compartida;
+  if (compartida) {
+    return `Esta propiedad se revisará en la reunión que la persona ya tiene agendada con ${valoresPrompt(ctx).asesor} el ${fechaYHora(compartida.inicio, ctx.tenant.zona_horaria)}. Confírmaselo en una frase. No ofrezcas horarios ni agendes otra cita.`;
+  }
   if (ctx.resultado_agenda && ctx.resultado_agenda.tipo === 'pendiente_confirmacion') {
     return 'La reserva se registró, pero el calendario debe confirmarla. Informa que la solicitud de cita quedó registrada y que recibirá la confirmación por este medio. No digas que está confirmada.';
   }
@@ -356,6 +382,9 @@ function solicitudRedaccion(ctx) {
       ? `- Dirígete a la persona como "${nombre}". No le preguntes su nombre.`
       : '- Aún no sabes cómo se llama la persona: si el siguiente dato no es otro, pregúntale su nombre de forma natural.',
     `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,
+    ctx.oportunidad && ctx.oportunidad.anteriores > 0
+      ? '- La persona ya tuvo otro caso con nosotros (otra propiedad o búsqueda). Los datos registrados son solo los de este caso: no los mezcles con lo hablado antes ni digas que una dirección nueva ya está registrada.'
+      : null,
     `- Acción: ${ev.accion || 'ninguna'}. Campos faltantes: ${(ev.campos_faltantes || []).join(', ') || 'ninguno'}.`,
     `- Siguiente paso: ${ctx.retorno ? instruccionRetorno(ctx) : instruccionSiguientePaso(ctx, ev)}`,
     'Responde solo con el texto del mensaje para la persona, sin comillas ni explicaciones.',

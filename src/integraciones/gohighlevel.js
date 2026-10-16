@@ -100,6 +100,26 @@ function interpretarUpsertContacto(estadoHttp, cuerpo) {
 }
 
 // -----------------------------------------------------------------------------
+// Notas del contacto
+// -----------------------------------------------------------------------------
+
+/** Nota visible para el asesor en la ficha del contacto (POST /contacts/{id}/notes). */
+function solicitudNotaContacto({ ghlContactId, texto }) {
+  return {
+    metodo: 'POST',
+    url: `${URL_BASE}/contacts/${encodeURIComponent(exigir(ghlContactId, 'ghl_contact_id del contacto'))}/notes`,
+    cabeceras: cabeceras(VERSION.contactos),
+    cuerpo: { body: exigir(texto, 'texto de la nota') },
+  };
+}
+
+function interpretarNotaContacto(estadoHttp, cuerpo) {
+  const error = clasificarError(estadoHttp, cuerpo);
+  if (error) return { ok: false, ...error };
+  return { ok: true, nota_id: (cuerpo && cuerpo.note && cuerpo.note.id) || null };
+}
+
+// -----------------------------------------------------------------------------
 // Disponibilidad
 // -----------------------------------------------------------------------------
 
@@ -308,6 +328,8 @@ module.exports = {
   solicitudCrearCita,
   interpretarCrearCita,
   solicitudCitasDeContacto,
+  solicitudNotaContacto,
+  interpretarNotaContacto,
   buscarCitaExistente,
   clasificarError,
 };

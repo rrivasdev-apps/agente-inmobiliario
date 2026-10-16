@@ -43,6 +43,12 @@ function modalidadValida(ctx, pedida) {
  */
 function planificarAgenda(ctx, seleccion) {
   const ev = ctx.evaluacion || {};
+  // Propiedad que se revisa en una reunión ya agendada: no se ofrecen horarios;
+  // al calificar se deja una nota para el asesor, una sola vez.
+  const op = ctx.oportunidad || {};
+  if (op.cita_compartida) {
+    return ev.resultado === 'calificado' && !op.nota_asesor_en ? { paso: 'nota' } : { paso: null };
+  }
   // Solo prioridad alta se agenda; prioridad baja (accion nutrir) no.
   if (ev.accion !== 'ofrecer_agenda' || ESTADOS_CON_CITA.has(ctx.contacto.estado) || citaVigente(ctx)) return { paso: null };
   // Quien regresa tras días sin escribir primero recibe el saludo; los horarios, en el turno siguiente.
@@ -132,6 +138,24 @@ function solicitudReserva(ctx, plan, ghl) {
   }));
 }
 
+/** Nota en GoHighLevel con los datos de la propiedad que se suma a la reunión agendada. */
+function solicitudNota(ctx, ghl) {
+  const cita = ctx.oportunidad.cita_compartida;
+  const { fecha_texto, hora_texto } = partesFecha(cita.inicio, ctx.tenant.zona_horaria);
+  const texto = [
+    `${ctx.rol.nombre_visible}: propiedad adicional para revisar en la reunión del ${fecha_texto}, ${hora_texto}.`,
+    resumenDatos(ctx),
+  ].join('\n');
+  return intentar(() => ghl.solicitudNotaContacto({ ghlContactId: ctx.contacto.ghl_contact_id, texto }));
+}
+
+function interpretarNota(respuesta, previo, ghl) {
+  if (previo && previo.error) return { ok: false, error: previo.error };
+  const r = respuesta || {};
+  const resultado = ghl.interpretarNotaContacto(r.statusCode, r.body);
+  return resultado.ok ? { ok: true, error: null } : { ok: false, error: resultado };
+}
+
 function partesFecha(iso, zona) {
   const d = new Date(iso);
   const fecha = new Intl.DateTimeFormat('es-CO', { timeZone: zona, weekday: 'long', day: 'numeric', month: 'long' }).format(d);
@@ -169,4 +193,6 @@ module.exports = {
   interpretarHorarios,
   solicitudReserva,
   interpretarReserva,
+  solicitudNota,
+  interpretarNota,
 };

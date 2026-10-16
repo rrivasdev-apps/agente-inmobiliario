@@ -166,7 +166,7 @@ test('extracción: describe los campos del rol y tolera fallas', () => {
   assert.equal(s.model, 'gpt-x');
   assert.match(s.messages[0].content, /relacion_inmueble \(una de: propietario, copropietario/);
   assert.equal(s.messages.at(-1).content, 'Hola, quiero vender');
-  assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana"}}')), { datos: { nombre: 'Ana' }, seleccion: null, eventos: [] });
+  assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana"}}')), { datos: { nombre: 'Ana' }, seleccion: null, nueva_propiedad: false, misma_cita: false, eventos: [] });
   assert.doesNotMatch(s.messages[0].content, /seleccion/);
   assert.deepEqual(conv.interpretarExtraccion(openaiOk('no es json')).datos, {});
   assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":[1]}')).datos.constructor, Object);
@@ -528,4 +528,74 @@ test('agenda: no ofrece horarios a quien regresa ni a quien ya tiene una cita vi
   assert.deepEqual(agenda.planificarAgenda(conCita, null), { paso: null });
   // Una cita que ya pasó no impide agendar otra.
   assert.deepEqual(agenda.planificarAgenda({ ...conCita, cita: { estado: 'confirmada', inicio: '2020-01-01T13:00:00Z' } }, null), { paso: 'ofrecer' });
+});
+
+// --- Otra propiedad (oportunidades) ---------------------------------------------------
+
+test('otra propiedad: el extractor la detecta solo si ya hay una registrada', () => {
+  const sin = conv.solicitudExtraccion(ctxBase());
+  assert.doesNotMatch(sin.messages[0].content, /nueva_propiedad": true/);
+  const con = conv.solicitudExtraccion(ctxBase({
+    contacto: { ...ctxBase().contacto, estado: 'cita_confirmada', datos: { nombre: 'Rafael', ciudad: 'Bogotá', direccion: 'Cra 17A #106-50' } },
+  }));
+  assert.match(con.messages[0].content, /OTRA propiedad distinta/);
+  assert.match(con.messages[0].content, /"misma_cita": true/);
+  const r = conv.interpretarExtraccion(openaiOk('{"datos":{"ciudad":"Bogotá"},"nueva_propiedad":true,"misma_cita":"si"}'));
+  assert.equal(r.nueva_propiedad, true);
+  assert.equal(r.misma_cita, false, 'solo un booleano true cuenta');
+});
+
+test('otra propiedad en la misma reunión: no ofrece horarios, deja nota y lo confirma', () => {
+  const agenda = require('../src/n8n/agenda');
+  const ghl = require('../src/integraciones/gohighlevel');
+  const compartida = { id: 'ci1', inicio: '2030-10-21T13:00:00Z', estado: 'confirmada', modalidad: 'llamada' };
+  const ctx = ctxBase({
+    contacto: { ...ctxBase().contacto, estado: 'cita_confirmada', ghl_contact_id: 'g1', datos: { nombre: 'Rafael', ciudad: 'Bogotá', direccion: 'Cra 15A #106-50' } },
+    rol: { ...ctxBase().rol, nombre_visible: 'Lucía' },
+    oportunidad: { id: 'o2', anteriores: 1, nota_asesor_en: null, cita_compartida: compartida },
+    evaluacion: { resultado: 'calificado', accion: 'ofrecer_agenda', campos_faltantes: [] },
+    tenant: { ...ctxBase().tenant, parametros: { comercial: { asesor: 'Javier' } } },
+    conversacion: { ...ctxBase().conversacion, identificado_como_virtual: true, agenda: {} },
+  });
+  assert.deepEqual(agenda.planificarAgenda(ctx, null), { paso: 'nota' });
+  assert.deepEqual(agenda.planificarAgenda({ ...ctx, oportunidad: { ...ctx.oportunidad, nota_asesor_en: '2030-01-01' } }, null), { paso: null });
+  assert.deepEqual(agenda.planificarAgenda({ ...ctx, evaluacion: { resultado: 'informacion_incompleta', accion: 'solicitar_datos' } }, null), { paso: null });
+
+  const nota = agenda.solicitudNota(ctx, ghl);
+  assert.equal(nota.error, null);
+  assert.equal(nota.solicitud.url, 'https://services.leadconnectorhq.com/contacts/g1/notes');
+  assert.match(nota.solicitud.cuerpo.body, /Lucía: propiedad adicional para revisar en la reunión del lunes 21 de octubre/);
+  assert.match(nota.solicitud.cuerpo.body, /Cra 15A #106-50/);
+  assert.deepEqual(agenda.interpretarNota({ statusCode: 201, body: { note: { id: 'n1' } } }, nota, ghl), { ok: true, error: null });
+  assert.equal(agenda.interpretarNota({ statusCode: 401, body: {} }, nota, ghl).error.motivo, 'credencial_invalida');
+
+  const prompt = conv.planificarRespuesta(ctx).solicitud_llm.messages[0].content;
+  assert.match(prompt, /se revisará en la reunión que la persona ya tiene agendada con Javier/);
+  assert.match(prompt, /no los mezcles con lo hablado antes/);
+});
+
+test('otra propiedad en la misma reunión con prioridad baja: no se nutre', () => {
+  const ctx = ctxBase({
+    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana', telefono: '+573001112233', operacion: 'venta', tipo_inmueble: 'casa', ciudad: 'Bogotá', barrio: 'Usaquén', direccion: 'Cl 1 # 2-3', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
+    verificacion: { resultado: 'verificada' },
+    tenant: { ...ctxBase().tenant, parametros: require('../config/tenants/javier-nunez/tenant.json').parametros },
+  });
+  assert.equal(conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion.accion, 'nutrir');
+  const compartida = conv.evaluarTurno({ ...ctx, oportunidad: { cita_compartida: { inicio: '2030-01-01T13:00:00Z' } } }, evaluarCalificacion);
+  assert.equal(compartida.evaluacion.accion, 'ofrecer_agenda');
+});
+
+test('flujo: la nota para el asesor pasa por la BD y vuelve a la respuesta', async () => {
+  const sig = (n, i = 0) => flujo.connections[n].main[i].map((d) => d.node);
+  assert.deepEqual(sig('¿Agendar ahora?'), ['¿Nota para el asesor?']);
+  assert.deepEqual(sig('¿Nota para el asesor?', 0), ['Preparar nota GHL']);
+  assert.deepEqual(sig('¿Nota para el asesor?', 1), ['¿Reservar?']);
+  assert.deepEqual(sig('Registrar nota'), ['Planificar respuesta']);
+  assert.equal(flujo.nodes.find((n) => n.name === 'GHL: nota para el asesor').retryOnFail, false, 'la nota no se duplica');
+
+  const r = ctxBase({ evaluacion: { resultado: 'calificado', accion: 'ofrecer_agenda' } });
+  const previo = { r, solicitud: { url: 'u' }, error: null };
+  const salida = await ejecutarCode('Interpretar nota', { statusCode: 201, body: { note: { id: 'n1' } } }, { 'Preparar nota GHL': previo });
+  const payload = JSON.parse(Buffer.from(salida.json.payload_b64, 'base64').toString());
+  assert.deepEqual(payload, { ok: true, error: null, evaluacion: r.evaluacion });
 });

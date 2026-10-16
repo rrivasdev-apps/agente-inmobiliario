@@ -13,6 +13,7 @@ Código: `src/integraciones/gohighlevel.js` (pruebas en `tests/gohighlevel.test.
 | Registrar contacto calificado | `POST /contacts/upsert` | `2021-07-28` | `contacts.write` |
 | Consultar horarios libres | `GET /calendars/{calendarId}/free-slots` | `2021-04-15` | `calendars.readonly` |
 | Reservar la cita | `POST /calendars/events/appointments` | `2021-04-15` | `calendars/events.write` |
+| Nota para el asesor (otra propiedad en la misma reunión) | `POST /contacts/{contactId}/notes` | `2021-07-28` | `contacts.write` |
 | Conciliar tras un timeout | `GET /contacts/{contactId}/appointments` | `2021-07-28` | `contacts.readonly` |
 | Leer una cita | `GET /calendars/events/appointments/{eventId}` | `2021-04-15` | `calendars/events.readonly` |
 

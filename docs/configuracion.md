@@ -40,3 +40,12 @@ Una conversación se cierra tras `conversacion.cierre_inactividad_horas` sin men
 En ese primer turno el agente no usa plantillas ni ofrece horarios: saluda por el primer nombre, recuerda en pocas palabras lo pendiente y pregunta en qué puede ayudar. Lo pendiente lo calcula el sistema según el estado: cita futura (fecha y hora), agendamiento pendiente, nutrición (plazo que dio) o datos incompletos. A un no calificado no se le recuerda nada. Desde el turno siguiente la conversación sigue su curso normal.
 
 Un no calificado que corrige un dato (por ejemplo, ofrece otro inmueble dentro de la cobertura) se vuelve a evaluar.
+
+## Varias propiedades de una misma persona
+
+Cada propiedad (o búsqueda) es una **oportunidad** con sus propios datos, estado y cita (`app.oportunidades`). El contacto guarda el caso actual; los anteriores quedan guardados con su estado final.
+
+- **Caso aparte (por defecto):** si la persona habla de otra propiedad, el caso actual se guarda y la calificación empieza de nuevo para la nueva, conservando nombre, teléfono y correo. Puede terminar en su propia cita.
+- **En la misma reunión:** si la persona pide explícitamente revisarla en la reunión que ya tiene agendada, la nueva propiedad se califica igual pero no se ofrecen horarios. Al calificar queda con esa reunión, el agente lo confirma y se deja una nota para el asesor en la ficha del contacto en GoHighLevel con los datos de la propiedad.
+
+El extractor de datos decide cuándo es otra propiedad y cuándo pide la misma reunión. Corregir un dato de la misma propiedad no abre un caso nuevo.

@@ -328,6 +328,7 @@ const seleccion = $('Registrar datos').item.json.r.seleccion;
 return { json: { r: $json.r, plan: agenda.planificarAgenda($json.r, seleccion) } };
 `);
 si('¿Agendar ahora?', [x(25), -80], '!!$json.plan.paso');
+si('¿Nota para el asesor?', [x(25), AG - 160], "$json.plan.paso === 'nota'");
 si('¿Reservar?', [x(25), AG], "$json.plan.paso === 'reservar'");
 
 code('Preparar contacto GHL', [x(26), AG + 160], ['agenda', 'ghl'], `
@@ -373,10 +374,29 @@ const r = previo.r;
 return { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64(agenda.interpretarReserva($json, r, previo.plan, previo, ghl)) } };
 `);
 postgres('Registrar cita', [x(29), AG], llamada('registrar_cita'));
+
+// Otra propiedad que se revisa en la reunión ya agendada: nota para el asesor.
+code('Preparar nota GHL', [x(26), AG - 160], ['agenda', 'ghl'], `
+const s = agenda.solicitudNota($json.r, ghl);
+return { json: { r: $json.r, solicitud: s.solicitud, error: s.error } };
+`);
+ghlHttp('GHL: nota para el asesor', [x(27), AG - 160], 'POST', { retryOnFail: false });
+code('Interpretar nota', [x(28), AG - 160], ['agenda', 'ghl'], `
+const previo = $('Preparar nota GHL').item.json;
+const r = previo.r;
+return { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64({ ...agenda.interpretarNota($json, previo, ghl), evaluacion: r.evaluacion }) } };
+`);
+postgres('Registrar nota', [x(29), AG - 160], llamada('registrar_nota_asesor'));
 si('¿Horario agotado?', [x(30), AG], "$json.r.resultado_agenda && $json.r.resultado_agenda.tipo === 'agotado'");
 
 conectar('Planificar agenda', '¿Agendar ahora?');
-conectar('¿Agendar ahora?', '¿Reservar?', 0);
+conectar('¿Agendar ahora?', '¿Nota para el asesor?', 0);
+conectar('¿Nota para el asesor?', 'Preparar nota GHL', 0);
+conectar('¿Nota para el asesor?', '¿Reservar?', 1);
+conectar('Preparar nota GHL', 'GHL: nota para el asesor');
+conectar('GHL: nota para el asesor', 'Interpretar nota');
+conectar('Interpretar nota', 'Registrar nota');
+conectar('Registrar nota', 'Planificar respuesta');
 conectar('¿Agendar ahora?', 'Planificar respuesta', 1);
 conectar('¿Reservar?', 'Preparar reserva', 0);
 conectar('¿Reservar?', 'Preparar contacto GHL', 1);
