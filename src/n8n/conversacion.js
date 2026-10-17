@@ -88,7 +88,7 @@ function textoPropuesta(p, asesor) {
   if (p.exclusiva) partes.push(`${asesor} trabaja la propiedad en exclusiva`);
   if (typeof p.comision_pct === 'number') partes.push(`con una comisión del ${p.comision_pct} %`);
   const beneficios = (p.beneficios || []).filter(Boolean);
-  return `${partes.join(' ') || `${asesor} explica sus condiciones en la llamada`}.${beneficios.length ? ` Beneficios aprobados: ${beneficios.join('; ')}.` : ' No hay otros beneficios aprobados para mencionar.'}`;
+  return `${partes.join(' ') || `${asesor} explica sus condiciones en la llamada`}.${beneficios.length ? ` Beneficios aprobados: ${beneficios.join('; ')}.` : ''}`;
 }
 
 function mensajesHistorial(ctx, { soloCasoActual = false } = {}) {
@@ -328,6 +328,24 @@ function encuentroDe(ctx, modalidad) {
   };
 }
 
+/**
+ * La propuesta se presenta la primera vez con la plantilla fija (texto
+ * aprobado); si ya se envió, el agente responde las dudas (instruccionPropuesta).
+ */
+function planPropuesta(ctx, ev, fija) {
+  const p = ctx.plantillas || {};
+  const datos = ctx.contacto.datos || {};
+  if (ev.accion !== 'presentar_propuesta' || datos.desea_continuar === false || !p.propuesta) return null;
+  const comercial = (ctx.tenant.parametros && ctx.tenant.parametros.comercial) || {};
+  const pct = comercial.propuesta && comercial.propuesta.comision_pct;
+  if (typeof pct !== 'number') return null;
+  const nombre = nombreParaDirigirse(ctx);
+  const plan = fija('propuesta', [], { nombre, comision_pct: String(pct).replace('.', ',') });
+  if (!nombre) plan.respuesta_fija.texto = plan.respuesta_fija.texto.replace(/,\s*\{\{nombre\}\}/, '');
+  const yaEnviada = (ctx.historial || []).some((m) => m.direccion === 'saliente' && m.contenido === plan.respuesta_fija.texto);
+  return yaEnviada ? null : plan;
+}
+
 function ultimoMensajeDelAgente(ctx) {
   const salientes = (ctx.historial || []).filter((m) => m.direccion === 'saliente');
   return salientes.length ? salientes[salientes.length - 1].contenido : null;
@@ -417,6 +435,7 @@ function instruccionPropuesta(ctx) {
     'La persona cumple los criterios. Antes de ofrecer horarios debe entender cómo trabaja el asesor y decir que quiere continuar.',
     `Si aún no lo explicaste en esta conversación, explícalo en dos frases: ${v.propuesta} No garantices precio ni plazo de venta.`,
     'Si ya lo explicaste, responde sus dudas solo con esa información; si algo requiere el criterio del asesor, di que lo registras y que él lo aclarará.',
+    'No menciones beneficios que no estén en la propuesta ni comentes qué está o no aprobado.',
     datos.solicita_acuerdo === true ? 'Pidió el borrador del acuerdo: no está disponible por este medio; dile que registras la solicitud y que el asesor lo revisa con ella.' : null,
     'Termina con una sola pregunta: "¿Hay algún punto que quieras aclarar antes de continuar?" o, si ya resolviste sus dudas, si desea continuar para agendar una llamada con el asesor.',
     'No ofrezcas horarios en este mensaje.',
@@ -589,6 +608,8 @@ function planificarRespuesta(ctx) {
   }
 
   const ev = ctx.evaluacion || {};
+  const propuesta = planPropuesta(ctx, ev, fija);
+  if (propuesta) return propuesta;
   const clave = PLANTILLA_POR_ACCION[ev.accion];
   const yaInformado = (ESTADO_YA_INFORMADO[ev.accion] && ctx.estado_anterior === ESTADO_YA_INFORMADO[ev.accion])
     // La dirección imprecisa se avisa con la plantilla una vez; después, aclaración redactada.

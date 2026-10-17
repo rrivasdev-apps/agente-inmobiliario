@@ -807,3 +807,24 @@ test('dirección imprecisa: la plantilla una vez; luego aclaración con la suger
   assert.match(prompt, /Google encontró "Cra 15 #4BIS-46, Bogotá, Colombia"/);
   assert.match(prompt, /no repitas ese mensaje/);
 });
+
+test('propuesta: texto fijo aprobado la primera vez; después el agente responde dudas', () => {
+  const plantilla = require('../config/tenants/javier-nunez/plantillas.json').find((p) => p.clave === 'propuesta').texto;
+  const datos = { nombre: 'Rafael Rivas', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
+    tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
+  const base = ctxLucia({ contacto: { ...ctxBase().contacto, datos }, verificacion: { resultado: 'verificada' }, plantillas: { ...ctxBase().plantillas, propuesta: plantilla } });
+  const ev = conv.evaluarTurno(base, evaluarCalificacion).evaluacion;
+  const plan = conv.planificarRespuesta({ ...base, evaluacion: ev });
+  assert.equal(plan.respuesta_fija.texto,
+    'Perfecto, Rafael. Ya tenemos toda la información. Antes de avanzar con la llamada con Javier, queremos comentarte que Javier trabaja las propiedades en exclusiva y con una comisión del 5 %. No garantizamos el precio ni el plazo de venta. ¿Hay algo que quieras aclarar antes de continuar?');
+  assert.doesNotMatch(plan.respuesta_fija.texto, /beneficios aprobados/);
+
+  const conHistorial = { ...base, evaluacion: ev, historial: [{ direccion: 'saliente', contenido: plan.respuesta_fija.texto }, { direccion: 'entrante', contenido: '¿La exclusividad cuánto dura?' }] };
+  const despues = conv.planificarRespuesta(conHistorial);
+  assert.equal(despues.respuesta_fija, null, 'no se repite');
+  assert.match(sistemaDe(despues), /No menciones beneficios que no estén en la propuesta/);
+  assert.doesNotMatch(sistemaDe(despues), /No hay otros beneficios aprobados/);
+
+  const sinNombre = conv.planificarRespuesta({ ...base, contacto: { ...base.contacto, nombre: null, datos: { ...datos, nombre: undefined } }, evaluacion: ev });
+  assert.match(sinNombre.respuesta_fija.texto, /^Perfecto\. Ya tenemos toda la información\./);
+});
