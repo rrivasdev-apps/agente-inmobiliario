@@ -98,3 +98,30 @@ select pg_temp.esperar(exists (
   where f->'autoriza_referencia' = 'true'::jsonb), 'el reporte muestra la autorización de referencia');
 
 do $$ begin raise notice 'OK cambio de asistente y referencia en el reporte'; end $$;
+
+-- Segunda propiedad del mismo dueño con su propia cita (migración 0010)
+create temp table op2 (paso text primary key, v jsonb);
+insert into op2 select 'in', app.recibir_mensaje(jsonb_build_object(
+  'tipo_canal', 'whatsapp', 'identificador_canal', '1371752999353628',
+  'id_externo', 'wamid.op2-1', 'remitente_id', '573005550302', 'nombre', 'Laura', 'texto', 'Vendo apartamento'));
+create temp table op2_ids as select ((select v->'tenant'->>'id' from op2))::uuid as t, ((select v->'conversacion'->>'id' from op2))::uuid as c,
+                                    ((select v->'contacto'->>'id' from op2))::uuid as k;
+select app.asignar_rol((select t from op2_ids), (select c from op2_ids), '{"intencion": "vender"}');
+select app.registrar_datos((select t from op2_ids), (select c from op2_ids), '{"datos": {"ciudad": "Bogotá", "direccion": "Cl 1 # 2-3"}}');
+select app.guardar_evaluacion((select t from op2_ids), (select c from op2_ids),
+  '{"evaluacion": {"resultado": "calificado", "prioridad": "alta", "accion": "ofrecer_agenda", "campos_faltantes": []}}');
+insert into app.citas (tenant_id, contacto_id, conversacion_id, rol_codigo, inicio, zona_horaria, modalidad, proveedor, id_externo, estado)
+select t, k, c, 'lucia', now() + interval '2 days', 'America/Bogota', 'llamada', 'gohighlevel_calendar', 'ghl-op2-1', 'confirmada' from op2_ids;
+select app.registrar_datos_y_seleccion((select t from op2_ids), (select c from op2_ids), '{"datos": {"ciudad": "Bogotá", "direccion": "Cl 9 # 8-7"}, "nueva_propiedad": true}');
+insert into app.citas (tenant_id, contacto_id, conversacion_id, rol_codigo, inicio, zona_horaria, modalidad, proveedor, id_externo, estado)
+select t, k, c, 'lucia', now() + interval '2 days', 'America/Bogota', 'llamada', 'gohighlevel_calendar', 'ghl-op2-2', 'confirmada' from op2_ids;
+select pg_temp.esperar((select count(*) from app.citas where contacto_id = (select k from op2_ids) and estado = 'confirmada') = 2,
+  'el mismo dueño tiene una cita activa por cada propiedad');
+do $$ begin
+  insert into app.citas (tenant_id, contacto_id, conversacion_id, rol_codigo, inicio, zona_horaria, modalidad, proveedor, id_externo, estado)
+  select t, k, c, 'lucia', now() + interval '3 days', 'America/Bogota', 'llamada', 'gohighlevel_calendar', 'ghl-op2-3', 'confirmada' from op2_ids;
+  raise exception 'Falló: aceptó dos citas activas para la misma propiedad';
+exception when unique_violation then null;
+end $$;
+
+do $$ begin raise notice 'OK una cita activa por propiedad'; end $$;
