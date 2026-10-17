@@ -148,3 +148,23 @@ select pg_temp.esperar((select count(*) from app.oportunidades where contacto_id
 select pg_temp.esperar((select v from (select app.contexto_conversacion((select t from op2_ids), (select c from op2_ids)) v) x)->'historial'->0->>'creado_en' is not null,
   'historial con la hora de cada mensaje');
 do $$ begin raise notice 'OK otra propiedad solo con el caso decidido'; end $$;
+
+-- Dirección imprecisa sin bucles (migración 0013)
+create temp table dr (paso text primary key, v jsonb);
+insert into dr select 'in', app.recibir_mensaje(jsonb_build_object(
+  'tipo_canal', 'whatsapp', 'identificador_canal', '1371752999353628',
+  'id_externo', 'wamid.dr1', 'remitente_id', '573005550501', 'nombre', 'Diana', 'texto', 'Vendo apartamento'));
+create temp table dr_ids as select ((select v->'tenant'->>'id' from dr))::uuid as t, ((select v->'conversacion'->>'id' from dr))::uuid as c;
+select app.asignar_rol((select t from dr_ids), (select c from dr_ids), '{"intencion": "vender"}');
+select app.registrar_datos((select t from dr_ids), (select c from dr_ids), '{"datos": {"ciudad": "Bogotá", "barrio": "San Patricio", "direccion": "Cra 15 # 4 Bis-46"}}');
+insert into dr select 'v1', app.registrar_verificacion((select t from dr_ids), (select c from dr_ids), '{"resultado": "ambigua", "direccion_normalizada": "Cra 15 #4BIS-46, Bogotá"}');
+select pg_temp.esperar((select v->'verificacion'->>'resultado' from dr where paso = 'v1') = 'ambigua', 'primer intento impreciso');
+-- Habla de otra cosa: no se vuelve a consultar
+insert into dr select 'otra', app.registrar_datos_y_seleccion((select t from dr_ids), (select c from dr_ids), '{"datos": {}}');
+select pg_temp.esperar(not (select (v->>'verificacion_pendiente')::boolean from dr where paso = 'otra'), 'sin dirección nueva no reconsulta');
+-- Vuelve a dar la misma dirección: se verifica otra vez
+insert into dr select 'repite', app.registrar_datos_y_seleccion((select t from dr_ids), (select c from dr_ids), '{"datos": {"direccion": "Cra 15 # 4 Bis-46"}}');
+select pg_temp.esperar((select (v->>'verificacion_pendiente')::boolean from dr where paso = 'repite'), 'la dirección repetida se verifica otra vez');
+insert into dr select 'v2', app.registrar_verificacion((select t from dr_ids), (select c from dr_ids), '{"resultado": "ambigua"}');
+select pg_temp.esperar((select v->'verificacion'->>'resultado' from dr where paso = 'v2') = 'no_verificada', 'segundo intento impreciso: no_verificada (D19)');
+do $$ begin raise notice 'OK dirección imprecisa sin bucles'; end $$;

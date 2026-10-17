@@ -328,6 +328,11 @@ function encuentroDe(ctx, modalidad) {
   };
 }
 
+function ultimoMensajeDelAgente(ctx) {
+  const salientes = (ctx.historial || []).filter((m) => m.direccion === 'saliente');
+  return salientes.length ? salientes[salientes.length - 1].contenido : null;
+}
+
 function nutreNoCalificados(ctx) {
   const n = ctx.tenant.parametros && ctx.tenant.parametros.nutricion;
   return Boolean(n && n.incluir_no_calificados);
@@ -436,6 +441,14 @@ function instruccionSiguientePaso(ctx, ev) {
       return instruccionPropuesta(ctx);
     case 'verificar_direccion':
       return 'Confirma con la persona la ciudad, el barrio y la dirección completa del inmueble.';
+    case 'aclarar_direccion': {
+      const sugerida = ctx.verificacion && ctx.verificacion.direccion_normalizada;
+      return [
+        'La dirección todavía no se pudo ubicar con precisión y ya se lo dijiste: no repitas ese mensaje.',
+        sugerida ? `Google encontró "${sugerida}": pregúntale en una frase si esa es la dirección del inmueble y en qué barrio queda.` : 'Pídele una aclaración concreta: el número exacto de la calle o carrera, o un punto de referencia cercano.',
+        'Si la persona habló de otra cosa, respóndele brevemente y retoma la dirección.',
+      ].join(' ');
+    }
     case 'reintentar_verificacion':
       return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';
     case 'ofrecer_agenda':
@@ -577,7 +590,9 @@ function planificarRespuesta(ctx) {
 
   const ev = ctx.evaluacion || {};
   const clave = PLANTILLA_POR_ACCION[ev.accion];
-  const yaInformado = ESTADO_YA_INFORMADO[ev.accion] && ctx.estado_anterior === ESTADO_YA_INFORMADO[ev.accion];
+  const yaInformado = (ESTADO_YA_INFORMADO[ev.accion] && ctx.estado_anterior === ESTADO_YA_INFORMADO[ev.accion])
+    // La dirección imprecisa se avisa con la plantilla una vez; después, aclaración redactada.
+    || (ev.accion === 'aclarar_direccion' && ultimoMensajeDelAgente(ctx) === p[clave]);
   if (clave && p[clave] && !yaInformado) {
     // No calificados: si el tenant los nutre, mensaje cordial + dossier en vez de solo "no cumples".
     if (ev.accion === 'archivar' && fueraDeCobertura(ev) && p.fuera_cobertura) return fija('fuera_cobertura');

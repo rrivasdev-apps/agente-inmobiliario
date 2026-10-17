@@ -793,3 +793,17 @@ test('extracción: con casos anteriores lee solo los mensajes del caso actual', 
   const recien = conv.solicitudExtraccion(ctxBase({ historial, oportunidad: { id: 'o4', anteriores: 3, creada_en: '2026-10-17T17:00:00Z' } }));
   assert.equal(recien.messages.length, 3, 'caso recién creado: al menos la última pregunta y respuesta');
 });
+
+test('dirección imprecisa: la plantilla una vez; luego aclaración con la sugerencia de Google', () => {
+  const ctx = (ultimo) => ctxBase({
+    evaluacion: { accion: 'aclarar_direccion', campos_faltantes: [] },
+    verificacion: { resultado: 'ambigua', direccion_normalizada: 'Cra 15 #4BIS-46, Bogotá, Colombia' },
+    historial: [{ direccion: 'saliente', contenido: ultimo }, { direccion: 'entrante', contenido: '¿A qué hora se van?' }],
+  });
+  assert.equal(conv.planificarRespuesta(ctx('¿En cuánto tiempo?')).respuesta_fija.plantilla, 'direccion_ambigua');
+  const segunda = conv.planificarRespuesta(ctx('Dirección ambigua.'));
+  assert.equal(segunda.respuesta_fija, null, 'no repite la plantilla');
+  const prompt = segunda.solicitud_llm.messages[0].content;
+  assert.match(prompt, /Google encontró "Cra 15 #4BIS-46, Bogotá, Colombia"/);
+  assert.match(prompt, /no repitas ese mensaje/);
+});

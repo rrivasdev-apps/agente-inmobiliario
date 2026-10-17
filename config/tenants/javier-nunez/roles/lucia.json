@@ -11,7 +11,7 @@
     {"clave": "operacion", "etiqueta": "Operación", "tipo": "opcion", "opciones": ["venta", "arriendo"], "descripcion": "venta si quiere vender el inmueble; arriendo si quiere ofrecerlo en arriendo"},
     {"clave": "ciudad", "etiqueta": "Ciudad", "tipo": "texto", "descripcion": "Ciudad o municipio donde está el inmueble, sin abreviaturas como 'D.C.'"},
     {"clave": "barrio", "etiqueta": "Sector o barrio", "tipo": "texto", "descripcion": "Sector o barrio del inmueble"},
-    {"clave": "direccion", "etiqueta": "Dirección", "tipo": "texto", "descripcion": "Dirección del inmueble tal como la escribe la persona"},
+    {"clave": "direccion", "etiqueta": "Dirección", "tipo": "texto", "descripcion": "Solo la nomenclatura del inmueble (p. ej. 'Carrera 15 # 4 Bis-46' o 'Calle 106 # 15A-31 apto 302'), sin ciudad, barrio, país ni otras palabras"},
     {"clave": "tipo_inmueble", "etiqueta": "Tipo de inmueble", "tipo": "opcion", "opciones": ["apartamento", "casa", "terreno", "oficina", "local", "bodega", "otro"], "descripcion": "terreno incluye lote"},
     {"clave": "relacion_inmueble", "etiqueta": "Relación con el inmueble", "tipo": "opcion", "opciones": ["propietario", "copropietario", "apoderado", "familiar", "conocido", "otro"]},
     {"clave": "intencion_venta", "etiqueta": "Intención de vender o arrendar", "tipo": "booleano", "descripcion": "true solo si la persona expresa que quiere vender o arrendar el inmueble, o evaluar hacerlo"},

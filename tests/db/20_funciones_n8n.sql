@@ -94,7 +94,7 @@ select pg_temp.esperar((select v->'contacto'->'datos'->>'ciudad' from r where pa
 select pg_temp.esperar((select v->'contacto'->>'nombre' from r where paso = 'datos') = 'Pedro', 'nombre sincronizado');
 select pg_temp.esperar((select v->'ignorados' from r where paso = 'datos') @> '["presupuesto_cop", "relacion_inmueble"]', 'claves rechazadas');
 select pg_temp.esperar(not (select v->'contacto'->'datos' ? 'relacion_inmueble' from r where paso = 'datos'), 'opción inválida no se guarda');
-select pg_temp.esperar((select v->>'direccion_a_verificar' from r where paso = 'datos') = 'Cl 63 # 9-15, Chapinero, Bogotá', 'dirección completa');
+select pg_temp.esperar((select v->>'direccion_a_verificar' from r where paso = 'datos') = 'Cl 63 # 9-15, Bogotá', 'dirección y ciudad (el barrio se pide pero no va a Google)');
 select pg_temp.esperar((select (v->>'verificacion_pendiente')::boolean from r where paso = 'datos'), 'verificación pendiente');
 select pg_temp.esperar(exists (select 1 from app.eventos where operacion = 'extraer_datos' and nivel = 'advertencia'), 'evento registrado');
 
