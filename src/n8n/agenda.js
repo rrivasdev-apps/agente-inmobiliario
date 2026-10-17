@@ -59,6 +59,8 @@ function planificarAgenda(ctx, seleccion) {
 
   const n = Number(seleccion && seleccion.horario);
   if (Number.isInteger(n) && n >= 1 && n <= ofrecidos.length) {
+    // Se ocupó después de ofrecerlo: se buscan horarios nuevos en vez de reservar encima.
+    if (ocupado(ctx)(ofrecidos[n - 1])) return { paso: 'ofrecer' };
     return { paso: 'reservar', inicio: ofrecidos[n - 1], modalidad: modalidadValida(ctx, seleccion.modalidad) };
   }
   return { paso: null };
@@ -128,6 +130,20 @@ function dentroDelHorario(ctx) {
   };
 }
 
+/**
+ * Horario que ya tiene una cita activa registrada (ctx.horarios_ocupados). Con
+ * duración configurada, también los que se cruzan con ella. Así no se ofrece
+ * un horario ocupado aunque el calendario permita más de una cita por horario.
+ */
+function ocupado(ctx) {
+  const inicios = (ctx.horarios_ocupados || []).map((i) => new Date(i).getTime()).filter((t) => !Number.isNaN(t));
+  const dur = (Number(config(ctx, 'calendario').duracion_minutos) || 0) * 60000;
+  return (iso) => {
+    const t = new Date(iso).getTime();
+    return inicios.some((o) => (dur ? t < o + dur && o < t + dur : t === o));
+  };
+}
+
 /** Horarios a ofrecer (solo los que devolvió el calendario, AC 30). */
 function interpretarHorarios(respuesta, ctx, ghl, ahora = new Date()) {
   const r = respuesta || {};
@@ -139,7 +155,7 @@ function interpretarHorarios(respuesta, ctx, ghl, ahora = new Date()) {
     antelacionMinutos: c.antelacion_minima_minutos ?? 60,
     maximo: c.horarios_a_ofrecer || 4,
     maximoPorDia: c.horarios_por_dia || 2,
-    admitir: dentroDelHorario(ctx),
+    admitir: (iso) => dentroDelHorario(ctx)(iso) && !ocupado(ctx)(iso),
   });
   return { ofrecidos, texto: ghl.textoHorarios(ofrecidos, ctx.tenant.zona_horaria), error: null };
 }

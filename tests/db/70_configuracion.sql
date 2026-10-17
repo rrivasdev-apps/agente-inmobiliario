@@ -46,3 +46,7 @@ end $$;
 delete from app.usuarios;
 
 do $$ begin raise notice 'OK tablas de ciudades atendidas y usuarios del reporte'; end $$;
+
+-- Horarios ocupados en el contexto (migración 0014)
+select pg_temp.esperar((select app.contexto_conversacion(tenant_id, id) ? 'horarios_ocupados' from app.conversaciones limit 1), 'contexto con horarios ocupados');
+do $$ begin raise notice 'OK horarios ocupados'; end $$;

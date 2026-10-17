@@ -828,3 +828,28 @@ test('propuesta: texto fijo aprobado la primera vez; después el agente responde
   const sinNombre = conv.planificarRespuesta({ ...base, contacto: { ...base.contacto, nombre: null, datos: { ...datos, nombre: undefined } }, evaluacion: ev });
   assert.match(sinNombre.respuesta_fija.texto, /^Perfecto\. Ya tenemos toda la información\./);
 });
+
+test('agenda: no ofrece horarios que ya tienen una cita registrada', () => {
+  const agenda = require('../src/n8n/agenda');
+  const ghl = require('../src/integraciones/gohighlevel');
+  const body = { '2030-10-21': { slots: ['2030-10-21T09:00:00-05:00', '2030-10-21T10:00:00-05:00', '2030-10-21T11:00:00-05:00'] } };
+  const ctx = ctxLucia({
+    integraciones: { calendario: { horarios_a_ofrecer: 4, horarios_por_dia: 4, antelacion_minima_minutos: 0 } },
+    horarios_ocupados: ['2030-10-21T14:00:00+00:00'],
+  });
+  const ofrecidos = (c) => agenda.interpretarHorarios({ statusCode: 200, body }, c, ghl, new Date('2030-10-20T00:00:00Z')).ofrecidos;
+  assert.deepEqual(ofrecidos(ctx), ['2030-10-21T10:00:00-05:00', '2030-10-21T11:00:00-05:00'], 'las 9:00 ya tienen cita');
+  const conDuracion = { ...ctx, integraciones: { calendario: { ...ctx.integraciones.calendario, duracion_minutos: 90 } } };
+  assert.deepEqual(ofrecidos(conDuracion), ['2030-10-21T11:00:00-05:00'], 'con 90 minutos, las 10:00 se cruzan');
+});
+
+test('agenda: si eligen un horario que se ocupó después de ofrecerlo, se ofrecen otros', () => {
+  const agenda = require('../src/n8n/agenda');
+  const ctx = ctxLucia({
+    evaluacion: { accion: 'ofrecer_agenda' },
+    conversacion: { ...ctxBase().conversacion, agenda: { ofrecidos: ['2030-10-21T09:00:00-05:00', '2030-10-22T09:00:00-05:00'] } },
+    horarios_ocupados: ['2030-10-21T14:00:00.000Z'],
+  });
+  assert.deepEqual(agenda.planificarAgenda(ctx, { horario: 1 }), { paso: 'ofrecer' });
+  assert.equal(agenda.planificarAgenda(ctx, { horario: 2 }).paso, 'reservar');
+});
