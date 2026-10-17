@@ -41,7 +41,7 @@ function modalidadValida(ctx, pedida) {
  *   null       – nada que hacer (no calificó, ya tiene cita o no eligió)
  * `seleccion` es la que extrajo el LLM en este turno.
  */
-function planificarAgenda(ctx, seleccion) {
+function planificarAgenda(ctx, seleccion, preferencia = null) {
   const ev = ctx.evaluacion || {};
   // Propiedad que se revisa en una reunión ya agendada: no se ofrecen horarios;
   // al calificar se deja una nota para el asesor, una sola vez.
@@ -55,7 +55,8 @@ function planificarAgenda(ctx, seleccion) {
   if (ctx.retorno) return { paso: null };
 
   const ofrecidos = (ctx.conversacion.agenda && ctx.conversacion.agenda.ofrecidos) || [];
-  if (!ofrecidos.length) return { paso: 'ofrecer' };
+  const conPreferencia = (plan) => (preferencia ? { ...plan, preferencia } : plan);
+  if (!ofrecidos.length) return conPreferencia({ paso: 'ofrecer' });
 
   const n = Number(seleccion && seleccion.horario);
   if (Number.isInteger(n) && n >= 1 && n <= ofrecidos.length) {
@@ -63,6 +64,8 @@ function planificarAgenda(ctx, seleccion) {
     if (ocupado(ctx)(ofrecidos[n - 1])) return { paso: 'ofrecer' };
     return { paso: 'reservar', inicio: ofrecidos[n - 1], modalidad: modalidadValida(ctx, seleccion.modalidad) };
   }
+  // Pidió otro día u hora: se vuelve a consultar el calendario.
+  if (preferencia) return { paso: 'ofrecer', preferencia };
   return { paso: null };
 }
 
@@ -98,10 +101,26 @@ function interpretarContacto(respuesta, ghl) {
     : { ghl_contact_id: null, error: resultado };
 }
 
-function solicitudHorarios(ctx, ghl, ahora = new Date()) {
+/** Instante en que empieza `fecha` (AAAA-MM-DD) en la zona dada. */
+function inicioDelDia(fecha, zona) {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const pared = Date.UTC(y, m - 1, d);
+  const v = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone: zona, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(pared)).map((p) => [p.type, p.value]));
+  const desfase = Date.UTC(+v.year, +v.month - 1, +v.day, +v.hour, +v.minute, +v.second) - pared;
+  return new Date(pared - desfase);
+}
+
+const fechaLocal = (iso, zona) => new Intl.DateTimeFormat('en-CA', { timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+
+/** Con preferencia de fecha se consulta desde ese día (o desde ahora si ya empezó). */
+function solicitudHorarios(ctx, ghl, ahora = new Date(), preferencia = null) {
   const c = config(ctx, 'calendario');
+  const desdeDia = preferencia && preferencia.fecha ? inicioDelDia(preferencia.fecha, ctx.tenant.zona_horaria) : null;
+  const desde = desdeDia && desdeDia > ahora ? desdeDia : ahora;
   return intentar(() => ghl.solicitudDisponibilidad({
-    config: c, desde: ahora, dias: c.dias_a_consultar, zonaHoraria: ctx.tenant.zona_horaria,
+    config: c, desde, dias: c.dias_a_consultar, zonaHoraria: ctx.tenant.zona_horaria,
   }));
 }
 
@@ -145,19 +164,40 @@ function ocupado(ctx) {
 }
 
 /** Horarios a ofrecer (solo los que devolvió el calendario, AC 30). */
-function interpretarHorarios(respuesta, ctx, ghl, ahora = new Date()) {
+function interpretarHorarios(respuesta, ctx, ghl, ahora = new Date(), preferencia = null) {
   const r = respuesta || {};
   const error = ghl.clasificarError(r.statusCode, r.body);
   if (error) return { ofrecidos: [], texto: '', error };
   const c = config(ctx, 'calendario');
-  const ofrecidos = ghl.interpretarDisponibilidad(r.body, {
+  const zona = ctx.tenant.zona_horaria;
+  const maximo = c.horarios_a_ofrecer || 4;
+  const base = (admitirExtra = () => true, porDia = c.horarios_por_dia || 2) => ghl.interpretarDisponibilidad(r.body, {
     ahora,
     antelacionMinutos: c.antelacion_minima_minutos ?? 60,
-    maximo: c.horarios_a_ofrecer || 4,
-    maximoPorDia: c.horarios_por_dia || 2,
-    admitir: (iso) => dentroDelHorario(ctx)(iso) && !ocupado(ctx)(iso),
+    maximo,
+    maximoPorDia: porDia,
+    admitir: (iso) => dentroDelHorario(ctx)(iso) && !ocupado(ctx)(iso) && admitirExtra(iso),
   });
-  return { ofrecidos, texto: ghl.textoHorarios(ofrecidos, ctx.tenant.zona_horaria), error: null };
+  const salida = (ofrecidos, extra = {}) => ({ ofrecidos, texto: ghl.textoHorarios(ofrecidos, zona), error: null, ...extra });
+
+  if (preferencia) {
+    // Todas las opciones del día pedido (y de la franja, si la hay); si no hay, las más cercanas.
+    const enDia = (iso) => !preferencia.fecha || fechaLocal(iso, zona) === preferencia.fecha;
+    const desde = minutosDe(preferencia.desde);
+    const hasta = minutosDe(preferencia.hasta);
+    const minutos = (iso) => {
+      const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: zona, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso)).split(':').map(Number);
+      return h * 60 + m;
+    };
+    const enFranja = (iso) => (desde === null || minutos(iso) >= desde) && (hasta === null || minutos(iso) < hasta);
+    const dia = preferencia.fecha ? diaTexto(preferencia.fecha, zona) : null;
+    const conFranja = base((iso) => enDia(iso) && enFranja(iso), maximo);
+    if (conFranja.length) return salida(conFranja, { motivo: 'preferencia', dia });
+    const delDia = preferencia.fecha ? base(enDia, maximo) : [];
+    if (delDia.length) return salida(delDia, { motivo: 'preferencia', dia });
+    return salida(base(), { motivo: 'preferencia_sin_cupo', dia: dia || 'horario que pediste' });
+  }
+  return salida(base());
 }
 
 const CANAL = { whatsapp: 'WhatsApp', instagram_dm: 'Instagram', facebook_messenger: 'Messenger' };
@@ -207,6 +247,12 @@ function interpretarNota(respuesta, previo, ghl) {
   const r = respuesta || {};
   const resultado = ghl.interpretarNotaContacto(r.statusCode, r.body);
   return resultado.ok ? { ok: true, error: null } : { ok: false, error: resultado };
+}
+
+/** "miércoles 21 de octubre" para una fecha AAAA-MM-DD. */
+function diaTexto(fecha, zona) {
+  const t = inicioDelDia(fecha, zona).getTime() + 12 * 3600000;
+  return new Intl.DateTimeFormat('es-CO', { timeZone: zona, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(t)).replace(',', '');
 }
 
 function partesFecha(iso, zona) {

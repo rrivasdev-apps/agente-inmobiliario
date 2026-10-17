@@ -324,8 +324,8 @@ const ghlHttp = (nombre, pos, metodo, extra = {}) => {
 const AG = 340; // fila de los nodos de agendamiento
 
 code('Planificar agenda', [x(24), -80], ['agenda'], `
-const seleccion = $('Registrar datos').item.json.r.seleccion;
-return { json: { r: $json.r, plan: agenda.planificarAgenda($json.r, seleccion) } };
+const datos = $('Registrar datos').item.json.r;
+return { json: { r: $json.r, plan: agenda.planificarAgenda($json.r, datos.seleccion, datos.preferencia_horario || null) } };
 `);
 si('¿Agendar ahora?', [x(25), -80], '!!$json.plan.paso');
 si('¿Nota para el asesor?', [x(25), AG - 160], "$json.plan.paso === 'nota'");
@@ -333,12 +333,12 @@ si('¿Reservar?', [x(25), AG], "$json.plan.paso === 'reservar'");
 
 code('Preparar contacto GHL', [x(26), AG + 160], ['agenda', 'ghl'], `
 const s = agenda.solicitudContacto($json.r, ghl);
-return { json: { r: $json.r, solicitud: s.solicitud, error: s.error } };
+return { json: { r: $json.r, plan: $json.plan, solicitud: s.solicitud, error: s.error } };
 `);
 ghlHttp('GHL: registrar contacto', [x(27), AG + 160], 'POST');
 code('Preparar horarios', [x(28), AG + 160], ['agenda', 'ghl'], `
 // Llega del upsert del contacto o de una reserva cuyo horario ya se ocupó.
-let r, ghlId = null, error = null, motivo = 'ofrecidos';
+let r, ghlId = null, error = null, motivo = 'ofrecidos', preferencia = null;
 if ($json.r) {
   r = $json.r;
   ghlId = r.contacto.ghl_contact_id;
@@ -346,18 +346,19 @@ if ($json.r) {
 } else {
   const previo = $('Preparar contacto GHL').item.json;
   r = previo.r;
+  preferencia = (previo.plan && previo.plan.preferencia) || null;
   const c = previo.error ? { ghl_contact_id: null, error: previo.error } : agenda.interpretarContacto($json, ghl);
   ghlId = c.ghl_contact_id;
   error = c.error;
 }
-const s = error ? { solicitud: null, error } : agenda.solicitudHorarios(r, ghl);
-return { json: { r, ghl_contact_id: ghlId, motivo, solicitud: s.solicitud, error: s.error } };
+const s = error ? { solicitud: null, error } : agenda.solicitudHorarios(r, ghl, new Date(), preferencia);
+return { json: { r, ghl_contact_id: ghlId, motivo, preferencia, solicitud: s.solicitud, error: s.error } };
 `);
 ghlHttp('GHL: horarios libres', [x(29), AG + 160], 'GET');
 code('Interpretar horarios', [x(30), AG + 160], ['agenda', 'ghl'], `
 const previo = $('Preparar horarios').item.json;
 const r = previo.r;
-const h = previo.error ? { ofrecidos: [], texto: '', error: previo.error } : agenda.interpretarHorarios($json, r, ghl);
+const h = previo.error ? { ofrecidos: [], texto: '', error: previo.error } : agenda.interpretarHorarios($json, r, ghl, new Date(), previo.preferencia);
 return { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64({ ghl_contact_id: previo.ghl_contact_id, motivo: previo.motivo, ...h }) } };
 `);
 postgres('Registrar oferta', [x(31), AG + 160], llamada('registrar_oferta'));

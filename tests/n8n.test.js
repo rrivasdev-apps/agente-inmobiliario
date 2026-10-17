@@ -166,7 +166,7 @@ test('extracción: describe los campos del rol y tolera fallas', () => {
   assert.equal(s.model, 'gpt-x');
   assert.match(s.messages[0].content, /relacion_inmueble \(una de: propietario, copropietario/);
   assert.equal(s.messages.at(-1).content, 'Hola, quiero vender');
-  assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana"}}')), { datos: { nombre: 'Ana' }, seleccion: null, nueva_propiedad: false, misma_cita: false, cambio_intencion: null, eventos: [] });
+  assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana"}}')), { datos: { nombre: 'Ana' }, seleccion: null, nueva_propiedad: false, misma_cita: false, cambio_intencion: null, preferencia_horario: null, eventos: [] });
   assert.doesNotMatch(s.messages[0].content, /seleccion/);
   assert.deepEqual(conv.interpretarExtraccion(openaiOk('no es json')).datos, {});
   assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":[1]}')).datos.constructor, Object);
@@ -880,4 +880,60 @@ test('extracción: no reemplaza el nombre completo por solo el primer nombre', (
   assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Rafael","ciudad":"Bogotá"}}'), ctx).datos, { ciudad: 'Bogotá' });
   assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Rafael José Rivas"}}'), ctx).datos.nombre, 'Rafael José Rivas', 'uno más completo sí');
   assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana Gómez"}}'), ctx).datos.nombre, 'Ana Gómez', 'otro nombre (corrección) sí');
+});
+
+// --- Preferencia de horario ----------------------------------------------------------
+
+test('preferencia: el extractor la pide con la fecha de hoy y la valida', () => {
+  const ctx = ctxBase({ conversacion: { ...ctxBase().conversacion, agenda: { ofrecidos: ['2030-10-23T15:00:00-05:00'], texto: '1. Miércoles 3:00 p. m.' } } });
+  const sistema = conv.solicitudExtraccion(ctx).messages[0].content;
+  assert.match(sistema, /Hoy es .+\(\d{4}-\d{2}-\d{2}\)/);
+  assert.match(sistema, /"preferencia_horario"/);
+  const r = (json) => conv.interpretarExtraccion(openaiOk(JSON.stringify(json))).preferencia_horario;
+  assert.deepEqual(r({ datos: {}, preferencia_horario: { fecha: '2030-10-23', desde: '12:00', hasta: null } }), { fecha: '2030-10-23', desde: '12:00', hasta: null });
+  assert.equal(r({ datos: {}, preferencia_horario: { fecha: 'miércoles' } }), null, 'formato inválido');
+});
+
+test('preferencia: pide otra opción el miércoles y se vuelven a buscar horarios de ese día', () => {
+  const agenda = require('../src/n8n/agenda');
+  const ghl = require('../src/integraciones/gohighlevel');
+  const pref = { fecha: '2030-10-23', desde: null, hasta: null };
+  const ctx = ctxLucia({
+    evaluacion: { accion: 'ofrecer_agenda' },
+    conversacion: { ...ctxBase().conversacion, agenda: { ofrecidos: ['2030-10-23T15:00:00-05:00'] } },
+    integraciones: { calendario: { calendar_id: 'cal', horarios_a_ofrecer: 4, horarios_por_dia: 2, antelacion_minima_minutos: 0 } },
+  });
+  assert.deepEqual(agenda.planificarAgenda(ctx, null, pref), { paso: 'ofrecer', preferencia: pref });
+  assert.equal(agenda.planificarAgenda(ctx, { horario: 1 }, pref).paso, 'reservar', 'si además eligió de la lista, se reserva');
+
+  const s = agenda.solicitudHorarios(ctx, ghl, new Date('2030-10-20T15:00:00Z'), pref);
+  assert.equal(s.solicitud.consulta.startDate, new Date('2030-10-23T05:00:00Z').getTime(), 'desde el inicio del miércoles en Bogotá');
+
+  const body = {
+    '2030-10-22': { slots: ['2030-10-22T10:00:00-05:00'] },
+    '2030-10-23': { slots: ['2030-10-23T09:00:00-05:00', '2030-10-23T11:00:00-05:00', '2030-10-23T15:00:00-05:00', '2030-10-23T17:00:00-05:00'] },
+  };
+  const h = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'), pref);
+  assert.deepEqual(h.ofrecidos, body['2030-10-23'].slots, 'todas las opciones del miércoles, no solo 2');
+  assert.equal(h.motivo, 'preferencia');
+  assert.equal(h.dia, 'miércoles 23 de octubre');
+
+  const tarde = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'), { ...pref, desde: '12:00' });
+  assert.deepEqual(tarde.ofrecidos, ['2030-10-23T15:00:00-05:00', '2030-10-23T17:00:00-05:00'], 'en la tarde');
+
+  const sinCupo = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'), { fecha: '2030-10-24', desde: null, hasta: null });
+  assert.equal(sinCupo.motivo, 'preferencia_sin_cupo');
+  assert.ok(sinCupo.ofrecidos.length > 0, 'ofrece las más cercanas');
+
+  const plantillas = Object.fromEntries(require('../config/tenants/javier-nunez/plantillas.json').filter((p) => !p.rol).map((p) => [p.clave, p.texto]));
+  const texto = (ra) => conv.planificarRespuesta(ctxBase({ plantillas, evaluacion: { accion: 'ofrecer_agenda' }, resultado_agenda: ra })).respuesta_fija.texto;
+  assert.match(texto({ tipo: 'preferencia', texto: h.texto, dia: h.dia }), /^Estas son las opciones disponibles para el miércoles 23 de octubre \(hora de Colombia\):\n1\. /);
+  assert.match(texto({ tipo: 'preferencia_sin_cupo', texto: sinCupo.texto, dia: sinCupo.dia }), /^Para el jueves 24 de octubre no hay horarios disponibles\./);
+});
+
+test('flujo: la preferencia llega de Registrar datos hasta la consulta de horarios', async () => {
+  const pref = { fecha: '2030-10-23', desde: null, hasta: null };
+  const r = ctxBase({ evaluacion: { accion: 'ofrecer_agenda' }, conversacion: { ...ctxBase().conversacion, agenda: { ofrecidos: ['x'] } } });
+  const plan = await ejecutarCode('Planificar agenda', { r }, { 'Registrar datos': { r: { seleccion: null, preferencia_horario: pref } } });
+  assert.deepEqual(plan.json.plan, { paso: 'ofrecer', preferencia: pref });
 });

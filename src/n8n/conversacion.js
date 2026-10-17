@@ -169,6 +169,23 @@ function modalidades(ctx) {
 
 const CAMPOS_DE_LA_PERSONA = new Set(['nombre', 'telefono', 'email']);
 
+function hoyTexto(ctx) {
+  const zona = ctx.tenant.zona_horaria;
+  const ahora = new Date();
+  const largo = new Intl.DateTimeFormat('es-CO', { timeZone: zona, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(ahora);
+  const iso = new Intl.DateTimeFormat('en-CA', { timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ahora);
+  return `${largo} (${iso})`;
+}
+
+/** preferencia_horario del extractor, validada: { fecha, desde, hasta } o null. */
+function preferenciaValida(v) {
+  if (!v || typeof v !== 'object') return null;
+  const fecha = /^\d{4}-\d{2}-\d{2}$/.test(v.fecha) ? v.fecha : null;
+  const hora = (h) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(h) ? h : null);
+  const p = { fecha, desde: hora(v.desde), hasta: hora(v.hasta) };
+  return p.fecha || p.desde || p.hasta ? p : null;
+}
+
 // Necesidad que atiende la otra asistente: el sistema cambia de rol (app.cambiar_rol).
 const CAMBIO_INTENCION = {
   lucia: { valor: 'comprar', instruccion: 'Si en su ÚLTIMO mensaje la persona dice que en realidad quiere comprar o tomar en arriendo una propiedad (no vender ni ofrecer la suya), agrega "cambio_intencion": "comprar".' },
@@ -211,6 +228,13 @@ function solicitudExtraccion(ctx) {
     ...(!(ctx.contacto.datos || {}).nombre && primerNombre(ctx.contacto.nombre)
       ? [`Nombre del perfil de ${NOMBRE_CANAL[ctx.canal.tipo] || 'la red'}: "${ctx.contacto.nombre}". Si la persona no dio otro nombre ni lo contradijo, úsalo como "nombre".`]
       : []),
+    ...(conHorarios || ctx.contacto.estado === 'calificado_pendiente_agendamiento' ? [
+      '',
+      `Hoy es ${hoyTexto(ctx)}.`,
+      'Si en su ÚLTIMO mensaje la persona no elige un horario de la lista sino que pide otro día u otra hora (p. ej. "otra opción el miércoles", "el viernes en la tarde", "después de las 3"),',
+      'agrega "preferencia_horario": {"fecha": "AAAA-MM-DD" o null, "desde": "HH:MM" o null, "hasta": "HH:MM" o null}, en hora de 24 h.',
+      '"En la mañana" = desde 09:00 hasta 12:00; "en la tarde" = desde 12:00 hasta 18:00; "en la noche" = desde 18:00. Un día de la semana es el próximo con ese nombre.',
+    ] : []),
     ...(conHorarios ? [
       '',
       'Horarios que se le ofrecieron a la persona:',
@@ -259,7 +283,8 @@ function interpretarExtraccion(respuesta, ctx) {
   const nueva_propiedad = Boolean(r.json && r.json.nueva_propiedad === true);
   const misma_cita = Boolean(r.json && r.json.misma_cita === true);
   const cambio_intencion = r.json && ['comprar', 'vender'].includes(r.json.cambio_intencion) ? r.json.cambio_intencion : null;
-  return { datos, seleccion, nueva_propiedad, misma_cita, cambio_intencion, eventos: [] };
+  const preferencia_horario = preferenciaValida(r.json && r.json.preferencia_horario);
+  return { datos, seleccion, nueva_propiedad, misma_cita, cambio_intencion, preferencia_horario, eventos: [] };
 }
 
 // --- Evaluación ----------------------------------------------------------------------
@@ -394,6 +419,8 @@ const PLANTILLA_POR_RESULTADO_AGENDA = {
   ofrecidos: 'calificado',
   agotado: 'horario_agotado',
   confirmada: 'confirmacion',
+  preferencia: 'horarios_preferencia',
+  preferencia_sin_cupo: 'horarios_preferencia_sin_cupo',
   sin_disponibilidad: 'falla_agenda',
   error: 'falla_agenda',
 };
@@ -626,6 +653,7 @@ function planificarRespuesta(ctx) {
       encuentro: encuentro.nombre,
       quien_contacta: encuentro.quien_contacta,
       horarios_disponibles: ra.texto,
+      dia: ra.dia,
       horarios_alternativos: ra.texto,
       fecha: ra.fecha,
       hora: ra.hora,

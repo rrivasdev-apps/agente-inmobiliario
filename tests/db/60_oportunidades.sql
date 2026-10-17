@@ -168,3 +168,13 @@ select pg_temp.esperar((select (v->>'verificacion_pendiente')::boolean from dr w
 insert into dr select 'v2', app.registrar_verificacion((select t from dr_ids), (select c from dr_ids), '{"resultado": "ambigua"}');
 select pg_temp.esperar((select v->'verificacion'->>'resultado' from dr where paso = 'v2') = 'no_verificada', 'segundo intento impreciso: no_verificada (D19)');
 do $$ begin raise notice 'OK dirección imprecisa sin bucles'; end $$;
+
+-- Preferencia de horario (migración 0015)
+insert into dr select 'pref', app.registrar_datos_y_seleccion((select t from dr_ids), (select c from dr_ids),
+  '{"datos": {}, "preferencia_horario": {"fecha": "2030-10-23", "desde": null, "hasta": null}}');
+select pg_temp.esperar((select v->'preferencia_horario'->>'fecha' from dr where paso = 'pref') = '2030-10-23', 'devuelve la preferencia al flujo');
+insert into dr select 'oferta', app.registrar_oferta((select t from dr_ids), (select c from dr_ids),
+  '{"ofrecidos": ["2030-10-23T09:00:00-05:00"], "texto": "1. Miércoles", "motivo": "preferencia", "dia": "miércoles 23 de octubre"}');
+select pg_temp.esperar((select v->'resultado_agenda'->>'dia' from dr where paso = 'oferta') = 'miércoles 23 de octubre', 'la oferta informa el día pedido');
+select pg_temp.esperar((select v->'resultado_agenda'->>'tipo' from dr where paso = 'oferta') = 'preferencia', 'tipo preferencia');
+do $$ begin raise notice 'OK preferencia de horario'; end $$;
