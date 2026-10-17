@@ -9,7 +9,7 @@
   {"clave": "enlace_agenda", "rol": null, "texto": "Puedes escoger el horario que mejor te convenga aquí: {{enlace_agenda}}. La cita quedará confirmada cuando completes la reserva."},
   {"clave": "confirmacion", "rol": null, "texto": "Listo, {{encuentro}} con {{asesor}} quedó confirmada para el {{fecha}} a las {{hora}} (hora de {{zona_horaria}}). {{quien_contacta}}"},
   {"clave": "pendiente_agenda", "rol": null, "texto": "Ya completamos la calificación. Para continuar, todavía debes seleccionar una fecha y hora para conversar con un asesor: {{enlace_agenda}}.", "requiere_aprobacion_meta": true},
-  {"clave": "horario_agotado", "rol": null, "texto": "Ese horario ya no se encuentra disponible. Puedo ofrecerte estas alternativas: {{horarios_alternativos}}."},
+  {"clave": "horario_agotado", "rol": null, "texto": "Ese horario ya no está disponible. Estas son las alternativas (hora de Colombia):\n{{horarios_alternativos}}"},
   {"clave": "falla_agenda", "rol": null, "texto": "No fue posible confirmar la reserva en este momento. Tu información quedó registrada, pero el horario aún no está reservado."},
   {"clave": "fuera_cobertura", "rol": "lucia", "texto": "Gracias por compartir la información. {{asesor}} atiende directamente propiedades en {{ciudades_cobertura}}. Podemos consultar si contamos con un colega que atienda esa zona. ¿Nos autorizas a compartir tus datos de contacto y la información de la propiedad para gestionar una posible referencia?"},
   {"clave": "no_calificado", "rol": null, "texto": "Gracias por compartir la información. En este momento tu caso no cumple las condiciones necesarias para continuar con el proceso."},

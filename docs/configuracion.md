@@ -14,7 +14,7 @@ Todo umbral de negocio vive en `config/tenants/<tenant>/tenant.json` → `parame
 | `conversacion.cierre_inactividad_horas` | `48` | Horas sin mensajes tras las que se cierra la conversación. Si la persona escribe después, el agente la saluda por su nombre, le recuerda lo pendiente (cita, agendamiento, datos) y pregunta en qué la puede ayudar. |
 | `comercial.asesor_nombre_completo` | `"Javier Núñez del Toro"` | A nombre de quién se presentan Lucía y Sonia ("asistente virtual de Javier Núñez del Toro"). |
 | `comercial.propuesta` | exclusiva, comisión 5 %, sin beneficios, sin video ni acuerdo | Lo que Lucía explica antes de agendar. `beneficios` (lista de textos aprobados), `video_url` y `acuerdo_url` están vacíos hasta que Javier los apruebe; mientras tanto el agente no los menciona. |
-| `agenda.hora_minima` / `agenda.hora_maxima` | `"09:00"` / `null` | Horario en que se ofrecen llamadas (hora de Bogotá), además de la disponibilidad del calendario. |
+| `agenda.hora_minima` / `agenda.hora_maxima` | `"09:00"` / `"21:00"` | Horario de atención (hora de Bogotá), además de la disponibilidad del calendario. El encuentro debe terminar a la hora de cierre (si no hay duración configurada, debe empezar antes). |
 | `agenda.encuentros` | llamada, videollamada, presencial | Cómo se nombra cada modalidad en la confirmación y quién contacta a quién. **Por validar con Javier.** |
 | `comercial.asesor` | `"Javier"` | Nombre con el que el agente se refiere al asesor en las objeciones ("eso lo revisa Javier en la reunión"). |
 | `comercial.argumento_exclusividad` | texto | Instrucción para responder "ya tengo agencia o asesor". |

@@ -697,9 +697,12 @@ test('agenda: no ofrece horarios antes de las 9:00 a. m. (hora de Bogotá)', () 
   const ctx = ctxLucia({ integraciones: { calendario: { horarios_a_ofrecer: 4, horarios_por_dia: 4, antelacion_minima_minutos: 0 } } });
   const body = { '2030-10-21': { slots: ['2030-10-21T08:00:00-05:00', '2030-10-21T09:00:00-05:00', '2030-10-21T23:00:00-05:00'] } };
   const r = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'));
-  assert.deepEqual(r.ofrecidos, ['2030-10-21T09:00:00-05:00', '2030-10-21T23:00:00-05:00'], 'hora_maxima sin definir: no filtra la tarde');
-  const conMax = { ...ctx, tenant: { ...ctx.tenant, parametros: { ...PARAMS, agenda: { ...PARAMS.agenda, hora_maxima: '18:00' } } } };
-  assert.deepEqual(agenda.interpretarHorarios({ statusCode: 200, body }, conMax, ghl, new Date('2030-10-20T00:00:00Z')).ofrecidos, ['2030-10-21T09:00:00-05:00']);
+  assert.deepEqual(r.ofrecidos, ['2030-10-21T09:00:00-05:00'], 'cierre a las 9:00 p. m.: no ofrece las 11:00 p. m.');
+  const conTarde = { '2030-10-21': { slots: ['2030-10-21T20:00:00-05:00', '2030-10-21T20:30:00-05:00', '2030-10-21T21:00:00-05:00'] } };
+  const ofrecidos = (c) => agenda.interpretarHorarios({ statusCode: 200, body: conTarde }, c, ghl, new Date('2030-10-20T00:00:00Z')).ofrecidos;
+  assert.deepEqual(ofrecidos(ctx), ['2030-10-21T20:00:00-05:00', '2030-10-21T20:30:00-05:00'], 'sin duración: debe empezar antes del cierre');
+  const conDuracion = { ...ctx, integraciones: { calendario: { ...ctx.integraciones.calendario, duracion_minutos: 60 } } };
+  assert.deepEqual(ofrecidos(conDuracion), ['2030-10-21T20:00:00-05:00'], 'con duración: debe terminar a la hora de cierre');
 });
 
 test('agenda: la cita lleva para Javier el origen, la prioridad y las dudas', () => {

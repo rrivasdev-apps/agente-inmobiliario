@@ -111,18 +111,20 @@ const minutosDe = (hhmm) => {
 /**
  * Horario de atención (parametros.agenda.hora_minima / hora_maxima, "HH:MM" en
  * la zona del tenant): no se ofrecen horarios fuera de él aunque el calendario
- * los tenga libres.
+ * los tenga libres. hora_maxima es el cierre: el encuentro debe terminar a esa
+ * hora (con la duración configurada; sin duración, debe empezar antes).
  */
 function dentroDelHorario(ctx) {
   const a = ((ctx.tenant.parametros || {}).agenda) || {};
   const min = minutosDe(a.hora_minima);
   const max = minutosDe(a.hora_maxima);
   if (min === null && max === null) return () => true;
+  const duracion = Number(config(ctx, 'calendario').duracion_minutos) || 0;
   const formato = new Intl.DateTimeFormat('en-GB', { timeZone: ctx.tenant.zona_horaria, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
   return (iso) => {
     const [h, m] = formato.format(new Date(iso)).split(':').map(Number);
     const t = h * 60 + m;
-    return (min === null || t >= min) && (max === null || t <= max);
+    return (min === null || t >= min) && (max === null || (duracion ? t + duracion <= max : t < max));
   };
 }
 

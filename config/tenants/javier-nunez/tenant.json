@@ -43,7 +43,7 @@
     },
     "agenda": {
       "hora_minima": "09:00",
-      "hora_maxima": null,
+      "hora_maxima": "21:00",
       "encuentros": {
         "llamada": { "nombre": "tu llamada", "quien_contacta": "{{asesor}} te llamará a este número." },
         "videollamada": { "nombre": "tu videollamada", "quien_contacta": "{{asesor}} te compartirá el enlace de la videollamada por este medio." },
