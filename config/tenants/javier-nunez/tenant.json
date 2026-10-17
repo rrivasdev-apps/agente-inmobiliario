@@ -11,11 +11,13 @@
       "tipos_inmueble": [
         "apartamento",
         "casa",
-        "lote",
-        "local",
-        "oficina",
-        "bodega"
+        "terreno",
+        "oficina"
       ]
+    },
+    "propietarios": {
+      "relaciones_validas": ["propietario", "copropietario", "apoderado"],
+      "valor_minimo_cop": 200000000
     },
     "prioridad": {
       "alta_hasta_meses": 3

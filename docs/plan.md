@@ -51,6 +51,8 @@ Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https
 | Asesores | 9 oct 2026 | Round Robin del calendario de GoHighLevel; al inicio solo Javier |
 | Todo umbral es parámetro | 9 oct 2026 | `config/tenants/<tenant>/tenant.json` → `parametros` (ver [configuracion.md](configuracion.md)) |
 
+| Validación de Javier | 17 oct 2026 | `entregables/Validacion_Lucia_Sonia_validado_2026-10-17.xlsx`: mensajes aprobados; horario 9:00 a. m. a 9:00 p. m.; tipos apartamento, casa, terreno, oficina; valor mínimo de venta 200.000.000 COP; ciudades y destinatarios del reporte en tablas (`app.ciudades_cobertura`, `app.usuarios`). Pendientes: video, borrador del acuerdo, dossier y marca de las plantillas de Meta |
+
 ## Decisiones pendientes que bloquean etapas
 
 | Decisión (PRD §10) | Bloquea | Valor provisional en el repo |

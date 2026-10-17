@@ -314,7 +314,7 @@ test('flujo: las consultas SQL no interpolan texto del usuario', () => {
 test('flujo: el nodo de evaluación usa el evaluador incrustado', async () => {
   const ctx = ctxBase({
     contacto: { id: 'c1', estado: 'en_calificacion', datos: {
-      nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
+      nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
       tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
     verificacion: { resultado: 'verificada' },
   });
@@ -594,7 +594,7 @@ test('otra propiedad en la misma reunión: no ofrece horarios, deja nota y lo co
 
 test('otra propiedad en la misma reunión con prioridad baja: no se nutre', () => {
   const ctx = ctxBase({
-    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', tipo_inmueble: 'casa', ciudad: 'Bogotá', barrio: 'Usaquén', direccion: 'Cl 1 # 2-3', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
+    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, tipo_inmueble: 'casa', ciudad: 'Bogotá', barrio: 'Usaquén', direccion: 'Cl 1 # 2-3', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
     verificacion: { resultado: 'verificada' },
     tenant: { ...ctxBase().tenant, parametros: require('../config/tenants/javier-nunez/tenant.json').parametros },
   });
@@ -639,7 +639,7 @@ test('Lucía: si no tiene tiempo, se respeta y no pregunta', () => {
 });
 
 test('Lucía: con solo el primer nombre pide el nombre completo y no califica', () => {
-  const datos = { nombre: 'Rafael', telefono: '+573001112233', operacion: 'venta', ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
+  const datos = { nombre: 'Rafael', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
     tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
   const ctx = ctxLucia({ contacto: { ...ctxBase().contacto, datos }, verificacion: { resultado: 'verificada' } });
   const ev = conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion;
@@ -649,7 +649,7 @@ test('Lucía: con solo el primer nombre pide el nombre completo y no califica', 
 });
 
 test('Lucía: antes de agendar presenta la propuesta y espera que quiera continuar', () => {
-  const datos = { nombre: 'Rafael Rivas', telefono: '+573001112233', operacion: 'venta', ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
+  const datos = { nombre: 'Rafael Rivas', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
     tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
   const ctx = ctxLucia({ contacto: { ...ctxBase().contacto, datos }, verificacion: { resultado: 'verificada' } });
   const ev = conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion;

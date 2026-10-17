@@ -11,7 +11,7 @@
     { "clave": "operacion", "etiqueta": "Operación", "tipo": "opcion", "opciones": ["compra", "arriendo"], "descripcion": "compra si busca comprar; arriendo si busca un inmueble en arriendo" },
     { "clave": "ciudad_interes", "etiqueta": "Ciudad de interés", "tipo": "texto" },
     { "clave": "zonas_interes", "etiqueta": "Zonas de interés", "tipo": "texto" },
-    { "clave": "tipo_inmueble", "etiqueta": "Tipo de inmueble buscado", "tipo": "opcion", "opciones": ["apartamento", "casa", "lote", "local", "oficina", "bodega", "otro"] },
+    { "clave": "tipo_inmueble", "etiqueta": "Tipo de inmueble buscado", "tipo": "opcion", "opciones": ["apartamento", "casa", "terreno", "oficina", "local", "bodega", "otro"], "descripcion": "terreno incluye lote" },
     { "clave": "presupuesto_cop", "etiqueta": "Presupuesto aproximado (COP)", "tipo": "numero", "descripcion": "Solo si busca comprar: presupuesto máximo en pesos colombianos. Si da un rango, usar el valor máximo." },
     { "clave": "canon_mensual_cop", "etiqueta": "Canon mensual (COP)", "tipo": "numero", "descripcion": "Solo si busca arriendo: canon mensual máximo que puede pagar, en pesos colombianos." },
     { "clave": "forma_pago", "etiqueta": "Forma de pago", "tipo": "opcion", "opciones": ["contado", "credito_hipotecario", "leasing", "subsidio", "mixto", "no_definido"] },

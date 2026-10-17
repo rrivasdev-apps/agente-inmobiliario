@@ -60,6 +60,11 @@ function generarTenant(dir) {
   sql.push(`insert into app.tenants (slug, nombre, zona_horaria, mercado, parametros) values (${lit(t.slug)}, ${lit(t.nombre)}, ${lit(t.zona_horaria)}, ${lit(t.mercado)}, ${json(parametros)})`
     + ' on conflict (slug) do update set nombre = excluded.nombre, zona_horaria = excluded.zona_horaria, mercado = excluded.mercado, parametros = excluded.parametros;');
 
+  // Ciudades atendidas: solo se siembran. La tabla se administra en Supabase
+  // (agregar, desactivar) y el seed no pisa esos cambios.
+  for (const ciudad of (parametros.cobertura && parametros.cobertura.ciudades) || []) {
+    sql.push(`insert into app.ciudades_cobertura (tenant_id, ciudad) values (${tid}, ${lit(ciudad)}) on conflict (tenant_id, ciudad) do nothing;`);
+  }
   for (const c of t.canales) {
     sql.push(`insert into app.canales (tenant_id, tipo, identificador_externo, nombre) values (${tid}, ${lit(c.tipo)}, ${lit(c.identificador_externo)}, ${lit(c.nombre)})`
       + ' on conflict (tipo, identificador_externo) do update set nombre = excluded.nombre;');

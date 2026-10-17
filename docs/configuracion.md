@@ -4,8 +4,10 @@ Todo umbral de negocio vive en `config/tenants/<tenant>/tenant.json` → `parame
 
 | Parámetro | Valor actual | Efecto |
 |---|---|---|
-| `cobertura.ciudades` | `["Bogotá"]` | Ciudades atendidas, para venta, compra y arriendo. Fuera de ellas: no califica. |
-| `cobertura.tipos_inmueble` | apartamento, casa, lote, local, oficina, bodega | Tipos atendidos. |
+| `cobertura.ciudades` | `["Bogotá"]` | Solo siembra la tabla `app.ciudades_cobertura` la primera vez. Las ciudades atendidas se administran en esa tabla (ver abajo). |
+| `cobertura.tipos_inmueble` | apartamento, casa, terreno, oficina | Tipos atendidos (venta, compra y arriendo). Terreno incluye lote. |
+| `propietarios.relaciones_validas` | propietario, copropietario, apoderado | Relación con el inmueble que califica (Lucía). |
+| `propietarios.valor_minimo_cop` | `200000000` | Valor mínimo de la propiedad en venta (Lucía). Se aplica apenas la persona da el valor. `null` = sin mínimo. |
 | `prioridad.alta_hasta_meses` | `3` | Quien califica y quiere concretar en ese plazo o menos es prioridad alta (se agenda). Más: prioridad baja (`nutricion`, no se agenda). |
 | `compra.presupuesto_minimo_cop` | `200000000` | Presupuesto mínimo para compradores. `null` = sin mínimo. |
 | `arriendo.canon_minimo_cop` | `null` | Canon mensual mínimo para quien busca arriendo. `null` = sin mínimo. |
@@ -20,7 +22,7 @@ Todo umbral de negocio vive en `config/tenants/<tenant>/tenant.json` → `parame
 | `comercial.argumento_exclusividad` | texto | Instrucción para responder "ya tengo agencia o asesor". |
 | `reporte_no_calificados.activo` | `true` | Incluye al tenant en el reporte semanal. |
 | `reporte_no_calificados.dias` | `7` | Periodo que cubre cada reporte. |
-| `reporte_no_calificados.destinatarios` | `[]` | Correos que reciben el reporte. Vacío = no se envía. |
+| `reporte_no_calificados.destinatarios` | `[]` | Correos adicionales. Los destinatarios se administran en la tabla `app.usuarios` (ver abajo). |
 
 Las reglas de cada rol (`roles/*.json` → `criterios`) usan estos parámetros con `"parametro": "ruta.en.parametros"`, y pueden aplicar solo a una operación con `"si": { "campo": "operacion", "valor": "arriendo" }`. El seed falla si una regla apunta a un parámetro que no existe.
 
@@ -62,3 +64,24 @@ El extractor de datos decide cuándo es otra propiedad y cuándo pide la misma r
 4. **Propuesta antes de agendar:** quien califica con prioridad alta primero escucha cómo trabaja Javier (`comercial.propuesta`) y se le pregunta si tiene dudas. Los horarios se ofrecen solo cuando dice que quiere continuar (`desea_continuar`). Las dudas (`dudas_propuesta`) y la solicitud del borrador del acuerdo (`solicita_acuerdo`) quedan registradas y van en la descripción de la cita.
 5. **Agenda:** solo horarios desde `agenda.hora_minima`. La confirmación indica fecha, hora de Colombia, modalidad y quién contacta a quién. La cita lleva para Javier el origen, la prioridad y los datos del caso.
 6. **Cambio de asistente:** si quien habla con Lucía quiere comprar (o con Sonia quiere vender), pasa a la otra en un caso nuevo, con la misma ficha de contacto.
+
+## Tablas de configuración (validación del 17 oct 2026)
+
+Se editan en Supabase → Table Editor (esquema `app`) o con SQL. No requieren tocar código ni regenerar nada.
+
+**Ciudades atendidas directamente** (`app.ciudades_cobertura`): cada fila es una ciudad; `activa = false` la deja de atender sin borrarla. Se compara sin distinguir mayúsculas ni tildes.
+
+```sql
+insert into app.ciudades_cobertura (tenant_id, ciudad)
+select id, 'Chía' from app.tenants where slug = 'javier-nunez';
+update app.ciudades_cobertura set activa = false where ciudad = 'Chía';
+```
+
+**Usuarios** (`app.usuarios`): nombre, correo y cargo. Quienes tienen `recibe_reporte = true` y están activos reciben el reporte semanal de los lunes.
+
+```sql
+insert into app.usuarios (tenant_id, nombre, email, cargo, recibe_reporte)
+select id, 'Javier Núñez del Toro', '<correo>', 'Director', true from app.tenants where slug = 'javier-nunez';
+```
+
+Para desactivar una ciudad conviene `activa = false` en lugar de borrarla: el seed vuelve a sembrar las ciudades de `cobertura.ciudades` que no existan.

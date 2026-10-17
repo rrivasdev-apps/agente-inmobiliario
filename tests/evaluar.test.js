@@ -30,6 +30,7 @@ const propietario = {
   nombre: 'Ana Pérez',
   telefono: '+573001112233',
   operacion: 'venta',
+  valor_estimado_cop: 450000000,
   ciudad: 'Bogota',
   barrio: 'Chapinero',
   direccion: 'Calle 63 # 9-15',
@@ -253,4 +254,22 @@ test('validación: obligatorios condicionales y prioridad mal formados', () => {
     prioridad: { campo: 'p' },
   });
   assert.equal(errores.length, 3);
+});
+
+test('Lucía: valor mínimo de la propiedad en venta (parámetro), aplicado apenas se conoce', () => {
+  const r = evaluarLucia({ ciudad: 'Bogotá', operacion: 'venta', valor_estimado_cop: 150000000 }, null);
+  assert.equal(r.resultado, 'no_calificado');
+  assert.equal(r.codigo_motivo, 'valor_minimo');
+  assert.equal(evaluarLucia({ ...propietario, valor_estimado_cop: 200000000 }, { resultado: 'verificada' }).resultado, 'calificado', 'el mínimo se incluye');
+  // En arriendo no se pide ni se aplica.
+  const arriendo = { ...propietario, operacion: 'arriendo' };
+  delete arriendo.valor_estimado_cop;
+  assert.equal(evaluarLucia(arriendo, { resultado: 'verificada' }).resultado, 'calificado');
+});
+
+test('Lucía: tipos atendidos y relaciones válidas salen de los parámetros', () => {
+  assert.equal(evaluarLucia({ ...propietario, tipo_inmueble: 'terreno' }, { resultado: 'verificada' }).resultado, 'calificado');
+  const local = evaluarLucia({ ...propietario, tipo_inmueble: 'local' }, { resultado: 'verificada' });
+  assert.equal(local.codigo_motivo, 'tipo_inmueble');
+  assert.equal(evaluarLucia({ ...propietario, relacion_inmueble: 'familiar' }, { resultado: 'verificada' }).codigo_motivo, 'relacion_valida');
 });
