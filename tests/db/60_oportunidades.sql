@@ -130,3 +130,21 @@ do $$ begin raise notice 'OK una cita activa por propiedad'; end $$;
 select pg_temp.esperar((select app.contexto_conversacion((select t from op2_ids), (select c from op2_ids))->'citas_externas') @> '["ghl-op2-1", "ghl-op2-2"]'::jsonb,
   'citas externas de todas las oportunidades en el contexto');
 do $$ begin raise notice 'OK citas externas en el contexto'; end $$;
+
+-- Otra propiedad mientras el caso actual se califica: no abre casos en cadena (migración 0012)
+create temp table op3_n as select count(*) n from app.oportunidades where contacto_id = (select k from op2_ids);
+select app.guardar_evaluacion((select t from op2_ids), (select c from op2_ids),
+  '{"evaluacion": {"resultado": "informacion_incompleta", "accion": "solicitar_datos", "campos_faltantes": ["barrio"]}}');
+select app.registrar_datos_y_seleccion((select t from op2_ids), (select c from op2_ids), '{"datos": {"plazo_meses": 1}, "nueva_propiedad": true}');
+select app.registrar_datos_y_seleccion((select t from op2_ids), (select c from op2_ids), '{"datos": {"barrio": "Chicó"}, "nueva_propiedad": true}');
+select pg_temp.esperar((select count(*) from app.oportunidades where contacto_id = (select k from op2_ids)) = (select n from op3_n),
+  'mientras se califica, "otra propiedad" no abre casos nuevos');
+select pg_temp.esperar((select datos->>'barrio' = 'Chicó' and datos->>'plazo_meses' = '1' from app.contactos where id = (select k from op2_ids)),
+  'los datos se conservan y se completan');
+-- El cambio de asistente sí abre un caso aunque se esté calificando
+select pg_temp.esperar(app.cambiar_rol((select t from op2_ids), (select c from op2_ids), 'sonia'), 'cambio de asistente');
+select pg_temp.esperar((select count(*) from app.oportunidades where contacto_id = (select k from op2_ids)) = (select n + 1 from op3_n),
+  'el cambio de asistente abre un caso nuevo');
+select pg_temp.esperar((select v from (select app.contexto_conversacion((select t from op2_ids), (select c from op2_ids)) v) x)->'historial'->0->>'creado_en' is not null,
+  'historial con la hora de cada mensaje');
+do $$ begin raise notice 'OK otra propiedad solo con el caso decidido'; end $$;

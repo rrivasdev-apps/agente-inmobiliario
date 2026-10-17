@@ -775,3 +775,21 @@ test('flujo: antes de crear la cita consulta las del contacto', async () => {
   const interpretada = await ejecutarCode('Interpretar reserva', buscada.json, { 'Preparar reserva': previo });
   assert.equal(decodificar(interpretada.json.payload_b64).resultado.id_externo, 'G1');
 });
+
+test('extracción: con casos anteriores lee solo los mensajes del caso actual', () => {
+  const m = (direccion, contenido, creado_en) => ({ direccion, remitente: direccion === 'entrante' ? 'contacto' : 'agente', contenido, creado_en });
+  const historial = [
+    m('entrante', 'Mi casa está en el barrio Riomar', '2026-10-17T16:00:00Z'),
+    m('saliente', '¿En cuánto tiempo quieres vender?', '2026-10-17T16:01:00Z'),
+    m('entrante', 'Quiero vender otra propiedad', '2026-10-17T16:41:00Z'),
+    m('saliente', '¿Qué tipo de inmueble es?', '2026-10-17T16:41:10Z'),
+    m('entrante', 'Un apartamento', '2026-10-17T16:42:00Z'),
+  ];
+  const ctx = ctxBase({ historial, oportunidad: { id: 'o3', anteriores: 2, creada_en: '2026-10-17T16:41:04Z' } });
+  const textos = conv.solicitudExtraccion(ctx).messages.slice(1).map((x) => x.content);
+  assert.deepEqual(textos, ['¿Qué tipo de inmueble es?', 'Un apartamento'], 'sin el barrio de la propiedad anterior');
+  const primera = conv.solicitudExtraccion(ctxBase({ historial, oportunidad: { id: 'o1', anteriores: 0, creada_en: '2026-10-17T16:41:04Z' } }));
+  assert.equal(primera.messages.length, historial.length + 1, 'sin casos anteriores lee todo');
+  const recien = conv.solicitudExtraccion(ctxBase({ historial, oportunidad: { id: 'o4', anteriores: 3, creada_en: '2026-10-17T17:00:00Z' } }));
+  assert.equal(recien.messages.length, 3, 'caso recién creado: al menos la última pregunta y respuesta');
+});

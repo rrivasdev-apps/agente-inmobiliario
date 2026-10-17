@@ -91,10 +91,17 @@ function textoPropuesta(p, asesor) {
   return `${partes.join(' ') || `${asesor} explica sus condiciones en la llamada`}.${beneficios.length ? ` Beneficios aprobados: ${beneficios.join('; ')}.` : ' No hay otros beneficios aprobados para mencionar.'}`;
 }
 
-function mensajesHistorial(ctx) {
-  return (ctx.historial || [])
-    .slice(-MENSAJES_EN_CONTEXTO)
-    .map((m) => ({ role: m.direccion === 'entrante' ? 'user' : 'assistant', content: m.contenido }));
+function mensajesHistorial(ctx, { soloCasoActual = false } = {}) {
+  let historial = (ctx.historial || []).slice(-MENSAJES_EN_CONTEXTO);
+  // Con casos anteriores, la extracción lee solo desde que empezó el actual (más
+  // la última pregunta y respuesta), para no mezclar datos de otra propiedad.
+  const desde = soloCasoActual && ctx.oportunidad && ctx.oportunidad.anteriores > 0 && ctx.oportunidad.creada_en;
+  if (desde) {
+    const t = new Date(desde).getTime();
+    const delCaso = historial.filter((m) => m.creado_en && new Date(m.creado_en).getTime() >= t);
+    historial = delCaso.length >= 2 ? delCaso : historial.slice(-2);
+  }
+  return historial.map((m) => ({ role: m.direccion === 'entrante' ? 'user' : 'assistant', content: m.contenido }));
 }
 
 function evento(nivel, proveedor, operacion, mensaje, contexto) {
@@ -188,7 +195,7 @@ function solicitudExtraccion(ctx) {
     'Si la persona corrigió un dato, usa el valor más reciente. Omite lo que no sepas; nunca adivines.',
     ...(tienePropiedad(ctx) ? [
       `Ya hay ${ctx.rol.codigo === 'sonia' ? 'una búsqueda registrada' : 'una propiedad registrada'}: son los datos ya registrados de abajo.`,
-      'Si en su ÚLTIMO mensaje la persona habla de OTRA propiedad distinta (otro inmueble para vender o arrendar, u otra búsqueda), agrega "nueva_propiedad": true y en "datos" incluye solo lo que dijo de esa nueva propiedad.',
+      'Si en su ÚLTIMO mensaje la persona presenta OTRA propiedad distinta (otro inmueble para vender o arrendar, u otra búsqueda), agrega "nueva_propiedad": true y en "datos" incluye solo lo que dijo de esa nueva propiedad. Si solo responde a tus preguntas sobre la propiedad de la que ya se está hablando, no lo agregues.',
       'Si solo corrige o completa un dato de la misma propiedad, no agregues "nueva_propiedad".',
     ] : []),
     ...(CAMBIO_INTENCION[ctx.rol.codigo] ? [
@@ -218,7 +225,7 @@ function solicitudExtraccion(ctx) {
     model: modelo(ctx),
     temperature: 0,
     response_format: { type: 'json_object' },
-    messages: [{ role: 'system', content: sistema }, ...mensajesHistorial(ctx)],
+    messages: [{ role: 'system', content: sistema }, ...mensajesHistorial(ctx, { soloCasoActual: true })],
   };
 }
 
