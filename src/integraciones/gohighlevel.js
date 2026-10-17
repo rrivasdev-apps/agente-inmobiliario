@@ -273,14 +273,51 @@ function solicitudCitasDeContacto({ ghlContactId }) {
   };
 }
 
-function buscarCitaExistente(cuerpo, { calendarId, inicio }) {
+/** Diferencia (ms) entre la hora de pared de `zona` y UTC en el instante `utc`. */
+function desfaseMs(zona, utc) {
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: zona, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(utc));
+  const v = Object.fromEntries(partes.map((p) => [p.type, p.value]));
+  return Date.UTC(+v.year, +v.month - 1, +v.day, +v.hour, +v.minute, +v.second) - utc;
+}
+
+/**
+ * Instantes (ms) que puede representar una fecha de GoHighLevel. Con zona
+ * (ISO) es uno solo. Sin zona ("2026-10-19 09:00:00", como en
+ * /contacts/{id}/appointments) se lee primero como hora del calendario
+ * (zonaHoraria) y, por si acaso, como UTC.
+ */
+function instantesPosibles(valor, zonaHoraria) {
+  const s = String(valor || '').trim();
+  if (/(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(s)) {
+    const t = new Date(s).getTime();
+    return Number.isNaN(t) ? [] : [t];
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
+  if (!m) return [];
+  const pared = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  return zonaHoraria ? [pared - desfaseMs(zonaHoraria, pared), pared] : [pared];
+}
+
+/**
+ * Cita del contacto en ese calendario y horario que siga activa y que no esté
+ * ya registrada (`excluir`: ids externos conocidos). Devuelve el evento tal
+ * como lo entrega GoHighLevel, o null.
+ */
+function encontrarCitaExistente(cuerpo, { calendarId, inicio, zonaHoraria, excluir = [] }) {
   const t = new Date(inicio).getTime();
   const eventos = (cuerpo && Array.isArray(cuerpo.events)) ? cuerpo.events : [];
-  const cita = eventos.find((e) =>
-    e.calendarId === calendarId
-    && new Date(e.startTime).getTime() === t
-    && !['cancelled', 'invalid'].includes(e.appointmentStatus));
-  return cita ? interpretarCrearCita(200, cita) : null;
+  return eventos.find((e) =>
+    e && e.id && !excluir.includes(e.id)
+    && e.calendarId === calendarId
+    && !['cancelled', 'invalid'].includes(e.appointmentStatus)
+    && instantesPosibles(e.startTime, zonaHoraria).includes(t)) || null;
+}
+
+function buscarCitaExistente(cuerpo, opciones) {
+  const cita = encontrarCitaExistente(cuerpo, opciones);
+  return cita ? interpretarCrearCita(200, { ...cita, startTime: new Date(opciones.inicio).toISOString() }) : null;
 }
 
 // -----------------------------------------------------------------------------
@@ -331,5 +368,6 @@ module.exports = {
   solicitudNotaContacto,
   interpretarNotaContacto,
   buscarCitaExistente,
+  encontrarCitaExistente,
   clasificarError,
 };

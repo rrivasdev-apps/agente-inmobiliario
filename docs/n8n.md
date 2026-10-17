@@ -114,5 +114,5 @@ npm test && npm run test:db
 - Mensajes que llegan casi al mismo tiempo del mismo contacto se procesan en paralelo; la BD evita duplicados, pero el orden de las respuestas no está garantizado.
 - La ventana de 24 h de WhatsApp (AC 45) no se revisa: el flujo solo responde a mensajes entrantes, que siempre están dentro de la ventana.
 - Entrega y notificación al asesor (Etapa 4) no están conectadas: la cita confirmada queda enlazada al asesor si su `ghl_user_id` está en `app.asesores`, pero no se registra `entregas_asesor` ni se notifica.
-- Si la reserva no responde (timeout), se marca `error_agendamiento`; aún no se concilia con `GET /contacts/{id}/appointments` antes de reintentar (AC 40).
+- Conciliación (AC 40): antes de crear una cita se consulta `GET /contacts/{id}/appointments`; si el contacto ya tiene una cita activa en ese calendario y horario que no está registrada (un intento anterior la creó y luego falló), se reutiliza en vez de crear otra. Si la consulta falla, se crea como siempre. Requiere el permiso `contacts.readonly`.
 - Las reservas hechas desde el enlace de GoHighLevel y los cambios hechos en GoHighLevel no llegan al flujo (falta el webhook de citas).

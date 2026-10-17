@@ -732,3 +732,46 @@ test('cambio de asistente: el extractor lo detecta y la nueva se presenta', () =
   });
   assert.match(sistemaDe(conv.planificarRespuesta(sonia)), /preséntate en una frase como Sonia, asistente virtual de Javier Núñez del Toro/);
 });
+
+// --- Conciliación de reservas (AC 40) ------------------------------------------------
+
+test('reserva: reutiliza la cita que GoHighLevel ya creó en ese horario (hora sin zona)', () => {
+  const agenda = require('../src/n8n/agenda');
+  const ghl = require('../src/integraciones/gohighlevel');
+  const ctx = ctxBase({ integraciones: { calendario: { calendar_id: 'cal' } }, citas_externas: ['YA-REGISTRADA'] });
+  const plan = { inicio: '2026-10-19T09:00:00-05:00', modalidad: 'llamada' };
+  const lista = (eventos) => ({ statusCode: 200, body: { events: eventos } });
+  const ev = (extra) => ({ id: 'G1', calendarId: 'cal', startTime: '2026-10-19 09:00:00', appointmentStatus: 'booked', assignedUserId: 'U1', ...extra });
+
+  const existente = agenda.citaYaCreada(lista([ev()]), ctx, plan, ghl);
+  assert.equal(existente.body.id, 'G1', 'la hora sin zona se lee en la zona del calendario');
+  const reserva = agenda.interpretarReserva(existente, ctx, plan, {}, ghl);
+  assert.equal(reserva.resultado.confirmada, true);
+  assert.equal(reserva.resultado.id_externo, 'G1');
+  assert.equal(reserva.hora_texto, '9:00 a. m.');
+
+  assert.equal(agenda.citaYaCreada(lista([ev({ startTime: '2026-10-19 10:00:00' })]), ctx, plan, ghl), null, 'otro horario: se crea');
+  assert.equal(agenda.citaYaCreada(lista([ev({ appointmentStatus: 'cancelled' })]), ctx, plan, ghl), null, 'cancelada: se crea');
+  assert.equal(agenda.citaYaCreada(lista([ev({ calendarId: 'otro' })]), ctx, plan, ghl), null, 'otro calendario: se crea');
+  assert.equal(agenda.citaYaCreada(lista([ev({ id: 'YA-REGISTRADA' })]), ctx, plan, ghl), null, 'ya registrada (otra propiedad): se crea');
+  assert.ok(agenda.citaYaCreada(lista([ev({ startTime: '2026-10-19T14:00:00Z' })]), ctx, plan, ghl), 'también acepta ISO con zona');
+  assert.equal(agenda.citaYaCreada({ statusCode: 401, body: {} }, ctx, plan, ghl), null, 'si la consulta falla, se crea como siempre');
+  assert.equal(agenda.citaYaCreada({ error: 'timeout' }, ctx, plan, ghl), null);
+});
+
+test('flujo: antes de crear la cita consulta las del contacto', async () => {
+  const sig = (n, i = 0) => flujo.connections[n].main[i].map((d) => d.node);
+  assert.deepEqual(sig('Preparar reserva'), ['Preparar consulta de citas']);
+  assert.deepEqual(sig('GHL: citas del contacto'), ['Buscar cita existente']);
+  assert.deepEqual(sig('¿Cita ya creada?', 0), ['Interpretar reserva']);
+  assert.deepEqual(sig('¿Cita ya creada?', 1), ['GHL: crear cita']);
+
+  const r = ctxBase({ integraciones: { calendario: { calendar_id: 'cal' } }, citas_externas: [] });
+  const previo = { r, plan: { inicio: '2026-10-19T09:00:00-05:00', modalidad: 'llamada' }, solicitud: { url: 'crear' }, error: null };
+  const respuesta = { statusCode: 200, body: { events: [{ id: 'G1', calendarId: 'cal', startTime: '2026-10-19 09:00:00', appointmentStatus: 'booked' }] } };
+  const buscada = await ejecutarCode('Buscar cita existente', respuesta, { 'Preparar reserva': previo });
+  assert.equal(buscada.json.existente.body.id, 'G1');
+  assert.deepEqual(buscada.json.solicitud, { url: 'crear' }, 'conserva la solicitud de crear para la otra rama');
+  const interpretada = await ejecutarCode('Interpretar reserva', buscada.json, { 'Preparar reserva': previo });
+  assert.equal(decodificar(interpretada.json.payload_b64).resultado.id_externo, 'G1');
+});

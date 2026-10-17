@@ -125,3 +125,8 @@ exception when unique_violation then null;
 end $$;
 
 do $$ begin raise notice 'OK una cita activa por propiedad'; end $$;
+
+-- Conciliación: el contexto informa las citas ya registradas del contacto (migración 0011)
+select pg_temp.esperar((select app.contexto_conversacion((select t from op2_ids), (select c from op2_ids))->'citas_externas') @> '["ghl-op2-1", "ghl-op2-2"]'::jsonb,
+  'citas externas de todas las oportunidades en el contexto');
+do $$ begin raise notice 'OK citas externas en el contexto'; end $$;

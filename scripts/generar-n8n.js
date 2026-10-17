@@ -366,12 +366,27 @@ code('Preparar reserva', [x(26), AG], ['agenda', 'ghl'], `
 const s = agenda.solicitudReserva($json.r, $json.plan, ghl);
 return { json: { r: $json.r, plan: $json.plan, solicitud: s.solicitud, error: s.error } };
 `);
+// AC 40: antes de crear, se buscan las citas del contacto para no duplicar una
+// que un intento anterior ya creó en GoHighLevel pero no quedó registrada.
+code('Preparar consulta de citas', [x(26), AG + 80], ['agenda', 'ghl'], `
+const s = $json.error ? { solicitud: null } : agenda.solicitudCitasPrevias($json.r, ghl);
+return { json: { solicitud: s.solicitud } };
+`);
+ghlHttp('GHL: citas del contacto', [x(27), AG + 80], 'GET');
+code('Buscar cita existente', [x(28), AG + 80], ['agenda', 'ghl'], `
+const previo = $('Preparar reserva').item.json;
+const existente = previo.error ? null : agenda.citaYaCreada($json, previo.r, previo.plan, ghl);
+return { json: { ...previo, existente } };
+`);
+si('¿Cita ya creada?', [x(29), AG + 80], '!!$json.existente');
 // Sin reintento automático: repetir un POST que sí llegó crearía otra cita.
 ghlHttp('GHL: crear cita', [x(27), AG], 'POST', { retryOnFail: false });
 code('Interpretar reserva', [x(28), AG], ['agenda', 'ghl'], `
 const previo = $('Preparar reserva').item.json;
 const r = previo.r;
-return { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64(agenda.interpretarReserva($json, r, previo.plan, previo, ghl)) } };
+// Llega de "GHL: crear cita" o, si la cita ya existía, de "¿Cita ya creada?".
+const respuesta = $json.existente || $json;
+return { json: { r, t: r.tenant.id, c: r.conversacion.id, payload_b64: b64(agenda.interpretarReserva(respuesta, r, previo.plan, previo, ghl)) } };
 `);
 postgres('Registrar cita', [x(29), AG], llamada('registrar_cita'));
 
@@ -406,7 +421,12 @@ conectar('Preparar horarios', 'GHL: horarios libres');
 conectar('GHL: horarios libres', 'Interpretar horarios');
 conectar('Interpretar horarios', 'Registrar oferta');
 conectar('Registrar oferta', 'Planificar respuesta');
-conectar('Preparar reserva', 'GHL: crear cita');
+conectar('Preparar reserva', 'Preparar consulta de citas');
+conectar('Preparar consulta de citas', 'GHL: citas del contacto');
+conectar('GHL: citas del contacto', 'Buscar cita existente');
+conectar('Buscar cita existente', '¿Cita ya creada?');
+conectar('¿Cita ya creada?', 'Interpretar reserva', 0);
+conectar('¿Cita ya creada?', 'GHL: crear cita', 1);
 conectar('GHL: crear cita', 'Interpretar reserva');
 conectar('Interpretar reserva', 'Registrar cita');
 conectar('Registrar cita', '¿Horario agotado?');

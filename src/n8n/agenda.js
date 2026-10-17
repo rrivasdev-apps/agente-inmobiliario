@@ -206,6 +206,31 @@ function partesFecha(iso, zona) {
   return { fecha_texto: limpiar(fecha.replace(',', '')), hora_texto: limpiar(hora), zona_texto: zonaTexto };
 }
 
+/** Citas del contacto en GoHighLevel, para no duplicar una que ya exista (AC 40). */
+function solicitudCitasPrevias(ctx, ghl) {
+  return intentar(() => ghl.solicitudCitasDeContacto({ ghlContactId: ctx.contacto.ghl_contact_id }));
+}
+
+/**
+ * AC 40: si el contacto ya tiene en el calendario una cita en el horario
+ * elegido que no está registrada (un intento anterior la creó y luego falló,
+ * o la reserva no respondió a tiempo), se reutiliza en vez de crear otra.
+ * Devuelve una respuesta con la forma de "crear cita", o null para crearla.
+ * Si la consulta falló, también null: se intenta crear como siempre.
+ */
+function citaYaCreada(respuesta, ctx, plan, ghl) {
+  const r = respuesta || {};
+  if (!(r.statusCode >= 200 && r.statusCode < 300)) return null;
+  const e = ghl.encontrarCitaExistente(r.body, {
+    calendarId: config(ctx, 'calendario').calendar_id,
+    inicio: plan.inicio,
+    zonaHoraria: ctx.tenant.zona_horaria,
+    excluir: ctx.citas_externas || [],
+  });
+  // La lista trae la hora sin zona: se usa la del horario elegido.
+  return e ? { statusCode: 200, body: { ...e, startTime: plan.inicio } } : null;
+}
+
 /** Datos para app.registrar_cita. `previo` es la salida de solicitudReserva. */
 function interpretarReserva(respuesta, ctx, plan, previo, ghl) {
   const r = respuesta || {};
@@ -231,5 +256,7 @@ module.exports = {
   solicitudReserva,
   interpretarReserva,
   solicitudNota,
+  solicitudCitasPrevias,
+  citaYaCreada,
   interpretarNota,
 };
