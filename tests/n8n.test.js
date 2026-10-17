@@ -853,3 +853,31 @@ test('agenda: si eligen un horario que se ocupó después de ofrecerlo, se ofrec
   assert.deepEqual(agenda.planificarAgenda(ctx, { horario: 1 }), { paso: 'ofrecer' });
   assert.equal(agenda.planificarAgenda(ctx, { horario: 2 }).paso, 'reservar');
 });
+
+test('propuesta: se presenta en cada caso aunque ya se haya enviado para otra propiedad', () => {
+  const plantilla = require('../config/tenants/javier-nunez/plantillas.json').find((p) => p.clave === 'propuesta').texto;
+  const texto = plantilla.replace('{{nombre}}', 'Rafael').replace(/\{\{asesor\}\}/g, 'Javier').replace('{{comision_pct}}', '5');
+  const ctx = ctxLucia({
+    plantillas: { ...ctxBase().plantillas, propuesta: plantilla },
+    contacto: { ...ctxBase().contacto, datos: { nombre: 'Rafael Rivas' } },
+    evaluacion: { resultado: 'calificado', accion: 'presentar_propuesta' },
+    oportunidad: { id: 'o3', anteriores: 2, creada_en: '2026-10-17T23:07:00Z' },
+    historial: [
+      { direccion: 'saliente', contenido: texto, creado_en: '2026-10-17T22:03:00Z' },
+      { direccion: 'entrante', contenido: 'Quiero vender otra propiedad', creado_en: '2026-10-17T23:07:00Z' },
+    ],
+  });
+  assert.equal(conv.planificarRespuesta(ctx).respuesta_fija.texto, texto, 'la del caso anterior no cuenta');
+  const yaEnEste = { ...ctx, historial: [...ctx.historial, { direccion: 'saliente', contenido: texto, creado_en: '2026-10-17T23:11:00Z' }] };
+  assert.equal(conv.planificarRespuesta(yaEnEste).respuesta_fija, null);
+  const comun = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'prompts', 'comun.md'), 'utf8');
+  const conReglas = { ...yaEnEste, rol: { ...yaEnEste.rol, prompt_sistema: comun } };
+  assert.match(sistemaDe(conv.planificarRespuesta(conReglas)), /El encuentro con Javier es una \*\*llamada telefónica\*\*: es lo que ofreces siempre/);
+});
+
+test('extracción: no reemplaza el nombre completo por solo el primer nombre', () => {
+  const ctx = ctxBase({ contacto: { ...ctxBase().contacto, datos: { nombre: 'Rafael Rivas' } } });
+  assert.deepEqual(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Rafael","ciudad":"Bogotá"}}'), ctx).datos, { ciudad: 'Bogotá' });
+  assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Rafael José Rivas"}}'), ctx).datos.nombre, 'Rafael José Rivas', 'uno más completo sí');
+  assert.equal(conv.interpretarExtraccion(openaiOk('{"datos":{"nombre":"Ana Gómez"}}'), ctx).datos.nombre, 'Ana Gómez', 'otro nombre (corrección) sí');
+});

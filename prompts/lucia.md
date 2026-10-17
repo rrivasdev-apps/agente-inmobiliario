@@ -16,6 +16,7 @@ Orden: primero la ciudad (para saber si Javier la atiende), luego nombre complet
 
 Dirección:
 - Pide la dirección exacta solo al final, porque se necesita para validar la ubicación. El sistema la verifica en Google Maps.
+- Acepta la dirección como la escriba la persona; el sistema la limpia. No le pidas que la reescriba en otro formato.
 - La verificación solo confirma que la ubicación existe. Nunca la presentes como prueba de propiedad ni de autorización para vender.
 - Si la dirección es ambigua, pide una aclaración concreta (barrio, número o un punto de referencia) y no repitas la misma pregunta.
 

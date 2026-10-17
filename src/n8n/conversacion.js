@@ -229,14 +229,32 @@ function solicitudExtraccion(ctx) {
   };
 }
 
-function interpretarExtraccion(respuesta) {
+/**
+ * Un nombre ya registrado no se reemplaza por uno más corto que lo contiene
+ * (p. ej. "Rafael" sacado de un saludo del agente cuando ya se tiene "Rafael Rivas").
+ */
+function conservarNombreCompleto(datos, ctx) {
+  const actual = ctx && ctx.contacto && (ctx.contacto.datos || {}).nombre;
+  const nuevo = datos.nombre;
+  if (typeof actual !== 'string' || typeof nuevo !== 'string') return datos;
+  const palabras = (t) => t.trim().toLocaleLowerCase('es').split(/\s+/).filter(Boolean);
+  const a = palabras(actual);
+  const n = palabras(nuevo);
+  if (n.length < a.length && n.every((w) => a.includes(w))) {
+    const { nombre, ...resto } = datos;
+    return resto;
+  }
+  return datos;
+}
+
+function interpretarExtraccion(respuesta, ctx) {
   const r = jsonOpenAI(respuesta);
   if (r.error) {
     // Sin extracción el turno continúa con los datos que ya había (AC 46).
     return { datos: {}, seleccion: null, eventos: [evento('error', 'openai', 'extraer_datos', r.error)] };
   }
   const esObjeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-  const datos = r.json && esObjeto(r.json.datos) ? r.json.datos : {};
+  const datos = conservarNombreCompleto(r.json && esObjeto(r.json.datos) ? r.json.datos : {}, ctx);
   const seleccion = r.json && esObjeto(r.json.seleccion) ? r.json.seleccion : null;
   const nueva_propiedad = Boolean(r.json && r.json.nueva_propiedad === true);
   const misma_cita = Boolean(r.json && r.json.misma_cita === true);
@@ -342,8 +360,17 @@ function planPropuesta(ctx, ev, fija) {
   const nombre = nombreParaDirigirse(ctx);
   const plan = fija('propuesta', [], { nombre, comision_pct: String(pct).replace('.', ',') });
   if (!nombre) plan.respuesta_fija.texto = plan.respuesta_fija.texto.replace(/,\s*\{\{nombre\}\}/, '');
-  const yaEnviada = (ctx.historial || []).some((m) => m.direccion === 'saliente' && m.contenido === plan.respuesta_fija.texto);
+  const yaEnviada = mensajesDelCaso(ctx).some((m) => m.direccion === 'saliente' && m.contenido === plan.respuesta_fija.texto);
   return yaEnviada ? null : plan;
+}
+
+/** Mensajes del caso actual: con casos anteriores, desde que se creó el actual. */
+function mensajesDelCaso(ctx) {
+  const historial = ctx.historial || [];
+  const desde = ctx.oportunidad && ctx.oportunidad.anteriores > 0 && ctx.oportunidad.creada_en;
+  if (!desde) return historial;
+  const t = new Date(desde).getTime();
+  return historial.filter((m) => m.creado_en && new Date(m.creado_en).getTime() >= t);
 }
 
 function ultimoMensajeDelAgente(ctx) {

@@ -258,7 +258,7 @@ return { json: { r: $json.r, solicitud: conversacion.solicitudExtraccion($json.r
 `);
 openai('OpenAI: extraer datos', [x(14), -80], '$json.solicitud');
 code('Interpretar extracción', [x(15), -80], ['conversacion'],
-  SALIDA_BD("$('Preparar extracción').item.json.r", 'conversacion.interpretarExtraccion($json)'));
+  SALIDA_BD("$('Preparar extracción').item.json.r", 'conversacion.interpretarExtraccion($json, r)'));
 postgres('Registrar datos', [x(16), -80], llamada('registrar_datos_y_seleccion'));
 si('¿Verificar dirección?', [x(17), -80], '$json.r.verificacion_pendiente === true');
 
