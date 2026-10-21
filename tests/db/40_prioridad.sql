@@ -21,13 +21,13 @@ select pg_temp.esperar((select parametros->'prioridad'->>'alta_hasta_meses' from
 create temp table pr (paso text primary key, v jsonb);
 insert into pr select 'in', app.recibir_mensaje(jsonb_build_object(
   'tipo_canal', 'whatsapp', 'identificador_canal', '1371752999353628',
-  'id_externo', 'wamid.pr1', 'remitente_id', '573005550101', 'texto', 'Quiero arrendar mi apartamento'));
+  'id_externo', 'wamid.pr1', 'remitente_id', '573005550101', 'texto', 'Quiero vender mi apartamento'));
 create temp table pr_ids as select ((select v->'tenant'->>'id' from pr where paso = 'in'))::uuid as t,
                                    ((select v->'conversacion'->>'id' from pr where paso = 'in'))::uuid as c;
 select pg_temp.esperar((select v->'tenant'->'parametros'->'cobertura'->'ciudades' from pr where paso = 'in') = '["Bogotá"]'::jsonb, 'parámetros en el contexto');
 select app.asignar_rol((select t from pr_ids), (select c from pr_ids), '{"intencion": "vender"}');
 select app.registrar_datos((select t from pr_ids), (select c from pr_ids),
-  '{"datos": {"nombre": "Marta", "operacion": "arriendo", "plazo_meses": 12}}');
+  '{"datos": {"nombre": "Marta", "operacion": "venta", "plazo_meses": 12}}');
 
 insert into pr select 'baja', app.guardar_evaluacion((select t from pr_ids), (select c from pr_ids),
   '{"evaluacion": {"resultado": "calificado", "prioridad": "baja", "accion": "nutrir", "campos_faltantes": []}}');

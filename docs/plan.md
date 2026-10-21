@@ -43,7 +43,8 @@ Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https
 | Calendario: GoHighLevel nativo | 7 oct 2026 | Ver [gohighlevel.md](gohighlevel.md) |
 | Flujo determinista en lugar de agente con herramientas | 7 oct 2026 | El LLM clasifica, extrae y redacta; los pasos los ejecuta n8n. Ver [n8n.md](n8n.md) |
 | Calificación mixta | 9 oct 2026 | Criterios mínimos y luego prioridad por plazo: alta se agenda; baja queda en `nutricion` y no se agenda |
-| Arriendo | 9 oct 2026 | Lucía: vende u ofrece en arriendo. Sonia: compra o busca arriendo (campo `operacion`) |
+| Arriendo | 9 oct 2026 | ~~Lucía: vende u ofrece en arriendo~~ (reemplazado el 19 oct: Lucía solo venta). Sonia: compra o busca arriendo (campo `operacion`) |
+| Lucía solo venta | 19 oct 2026 | Saludo "¿vender o comprar?". Quien solo quiere arrendar recibe `solo_venta` y no sigue (regla temprana `solo_venta`); si vende y pregunta por arriendo, lo conversa con Javier en la visita |
 | Dossier para prioridad baja | 9 oct 2026 | Envío automático por WhatsApp cuando exista (`parametros.dossier`) |
 | Reporte semanal de no calificados | 9 oct 2026 | Correo los lunes al administrador con motivo de descalificación y leads de prioridad baja |
 | Presentación como asistente virtual | 9 oct 2026 | Se mantiene (AC 09) |

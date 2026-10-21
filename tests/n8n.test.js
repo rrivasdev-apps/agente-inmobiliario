@@ -1007,3 +1007,14 @@ test('redacción con horarios que el sistema no dio: se reemplaza por la pregunt
   assert.equal(conv.interpretarRedaccion(openaiOk('¿Tu apartamento tiene 3 habitaciones?'), ctx).texto, '¿Tu apartamento tiene 3 habitaciones?');
   assert.equal(conv.interpretarRedaccion(openaiOk('Hola Ana')).texto, 'Hola Ana');
 });
+
+test('solo venta: quien solo quiere arrendar recibe la plantilla solo_venta (19 oct 2026)', () => {
+  const plantillas = require('../config/tenants/javier-nunez/plantillas.json');
+  const saludo = plantillas.find((p) => p.clave === 'seleccion_intencion').texto;
+  assert.doesNotMatch(saludo, /arrend/i);
+  const ctx = ctxBase({
+    plantillas: { ...ctxBase().plantillas, solo_venta: 'Solo venta.' },
+    evaluacion: { resultado: 'no_calificado', accion: 'archivar', codigo_motivo: 'solo_venta', campos_faltantes: [] },
+  });
+  assert.equal(conv.planificarRespuesta(ctx).respuesta_fija.plantilla, 'solo_venta');
+});

@@ -6,7 +6,7 @@
  * administrador del tenant (parametros.reporte_no_calificados.destinatarios).
  */
 
-const ROL = { lucia: 'Lucía (vende / ofrece en arriendo)', sonia: 'Sonia (compra / busca arriendo)' };
+const ROL = { lucia: 'Lucía (vende)', sonia: 'Sonia (compra / busca arriendo)' };
 
 function escapar(texto) {
   return String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

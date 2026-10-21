@@ -1,5 +1,5 @@
 [
-  {"clave": "seleccion_intencion", "rol": null, "texto": "Hola, gracias por contactarnos. Soy la asistente virtual de Javier Núñez del Toro. Para orientarte, cuéntame: ¿quieres vender o arrendar una propiedad, o estás buscando una para comprar o arrendar?"},
+  {"clave": "seleccion_intencion", "rol": null, "texto": "Hola, gracias por contactarnos. Soy la asistente virtual de Javier Núñez del Toro. Para orientarte, cuéntame: ¿quieres vender una propiedad o estás buscando una para comprar?"},
   {"clave": "inicio", "rol": "lucia", "texto": "Hola, gracias por contactarnos. Soy Lucía, asistente virtual de Javier Núñez del Toro. Con gusto te ayudo con tu propiedad. ¿Puedo hacerte unas preguntas breves para conocer tu propiedad y orientarte sobre el siguiente paso?"},
   {"clave": "inicio", "rol": "sonia", "texto": "Hola, gracias por contactarnos. Soy Sonia, asistente virtual de Javier Núñez del Toro. Con gusto te ayudo a encontrar la propiedad que buscas."},
   {"clave": "comentario_instagram", "rol": null, "texto": "¡Hola! Gracias por escribirnos. Envíanos un mensaje directo con la palabra INFO para poder ayudarte."},
@@ -14,6 +14,7 @@
   {"clave": "horarios_preferencia_sin_cupo", "rol": null, "texto": "Para el {{dia}} no hay horarios disponibles. Estas son las opciones más cercanas (hora de Colombia):\n{{horarios_disponibles}}\n¿Cuál prefieres?"},
   {"clave": "falla_agenda", "rol": null, "texto": "No fue posible confirmar la reserva en este momento. Tu información quedó registrada, pero el horario aún no está reservado."},
   {"clave": "propuesta", "rol": "lucia", "texto": "Perfecto, {{nombre}}. Ya tenemos toda la información. Antes de avanzar con la llamada con {{asesor}}, queremos comentarte que {{asesor}} trabaja las propiedades en exclusiva y con una comisión del {{comision_pct}} %. No garantizamos el precio ni el plazo de venta. ¿Hay algo que quieras aclarar antes de continuar?"},
+  {"clave": "solo_venta", "rol": "lucia", "texto": "Gracias por escribirnos. Por ahora acompañamos únicamente la venta de propiedades, así que no podemos ayudarte con el arriendo. Si más adelante decides vender, con gusto te atendemos."},
   {"clave": "fuera_cobertura", "rol": "lucia", "texto": "Gracias por compartir la información. {{asesor}} atiende directamente propiedades en {{ciudades_cobertura}}. Podemos consultar si contamos con un colega que atienda esa zona. ¿Nos autorizas a compartir tus datos de contacto y la información de la propiedad para gestionar una posible referencia?"},
   {"clave": "no_calificado", "rol": null, "texto": "Gracias por compartir la información. En este momento tu caso no cumple las condiciones necesarias para continuar con el proceso."},
   {"clave": "no_calificado_nutricion", "rol": null, "texto": "Gracias por compartir la información. Por ahora no podemos avanzar con una llamada, pero quedas registrado y te compartiremos información útil para tu proceso. Cuando quieras retomar, escríbenos por aquí."},

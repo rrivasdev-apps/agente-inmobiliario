@@ -466,6 +466,8 @@ function instruccionPermiso(ctx) {
 }
 
 const fueraDeCobertura = (ev) => String(ev.codigo_motivo || '').split(',').includes('cobertura_ciudad');
+// Lucía solo atiende ventas (reunión del 19 oct 2026): quien solo quiere arrendar no sigue.
+const soloArriendo = (ev) => String(ev.codigo_motivo || '').split(',').includes('solo_venta');
 
 function instruccionReferencia(ctx) {
   const datos = ctx.contacto.datos || {};
@@ -500,14 +502,10 @@ function instruccionPropuesta(ctx) {
 // la calificación ni ofrece horarios que el sistema no le dio.
 const FALTAN_DATOS = 'Aún faltan datos: no digas que ya tienes toda la información, no hables de agendar ni ofrezcas días u horarios.';
 
-const VERBO_OPERACION = { venta: 'vender', arriendo: 'arrendar' };
-
-/** Pregunta fija del campo (roles_agente.campos[].pregunta), con {{operacion}} como verbo. */
+/** Pregunta fija del campo (roles_agente.campos[].pregunta). */
 function preguntaDeCampo(ctx, clave) {
   const campo = (ctx.rol.campos || []).find((c) => c.clave === clave);
-  if (!campo || !campo.pregunta) return null;
-  const operacion = VERBO_OPERACION[(ctx.contacto.datos || {}).operacion] || 'vender o arrendar';
-  return rellenar(campo.pregunta, { operacion });
+  return campo && campo.pregunta ? campo.pregunta : null;
 }
 
 function instruccionSiguientePaso(ctx, ev) {
@@ -692,6 +690,7 @@ function planificarRespuesta(ctx) {
   if (clave && p[clave] && !yaInformado) {
     // No calificados: si el tenant los nutre, mensaje cordial + dossier en vez de solo "no cumples".
     if (ev.accion === 'archivar' && fueraDeCobertura(ev) && p.fuera_cobertura) return fija('fuera_cobertura');
+    if (ev.accion === 'archivar' && soloArriendo(ev) && p.solo_venta) return fija('solo_venta');
     const nutrirNoCalificado = ev.accion === 'archivar' && nutreNoCalificados(ctx) && p.no_calificado_nutricion;
     const plan = fija(nutrirNoCalificado ? 'no_calificado_nutricion' : clave);
     if ((ev.accion === 'nutrir' || nutrirNoCalificado) && dossier(ctx)) plan.respuesta_fija.documento = dossier(ctx);

@@ -242,9 +242,11 @@ test('cobertura: ciudades y tipos salen de los parámetros', () => {
   assert.equal(evaluarSonia({ ...comprador, ciudad_interes: 'Chía' }).codigo_motivo, 'cobertura_ciudad');
 });
 
-test('Lucía en arriendo usa los mismos criterios de cobertura', () => {
-  const r = evaluarLucia({ ...propietario, operacion: 'arriendo' }, { resultado: 'verificada' });
-  assert.equal(r.resultado, 'calificado');
+test('Lucía solo atiende ventas: quien solo quiere arrendar no sigue (19 oct 2026)', () => {
+  const r = evaluarLucia({ ciudad: 'Bogotá', operacion: 'arriendo' }, null);
+  assert.equal(r.resultado, 'no_calificado');
+  assert.equal(r.codigo_motivo, 'solo_venta');
+  assert.equal(evaluarLucia({ ...propietario, operacion: 'arriendo' }, { resultado: 'verificada' }).resultado, 'no_calificado');
 });
 
 test('validación: obligatorios condicionales y prioridad mal formados', () => {
@@ -261,10 +263,6 @@ test('Lucía: valor mínimo de la propiedad en venta (parámetro), aplicado apen
   assert.equal(r.resultado, 'no_calificado');
   assert.equal(r.codigo_motivo, 'valor_minimo');
   assert.equal(evaluarLucia({ ...propietario, valor_estimado_cop: 200000000 }, { resultado: 'verificada' }).resultado, 'calificado', 'el mínimo se incluye');
-  // En arriendo no se pide ni se aplica.
-  const arriendo = { ...propietario, operacion: 'arriendo' };
-  delete arriendo.valor_estimado_cop;
-  assert.equal(evaluarLucia(arriendo, { resultado: 'verificada' }).resultado, 'calificado');
 });
 
 test('Lucía: tipos atendidos y relaciones válidas salen de los parámetros', () => {
