@@ -97,6 +97,10 @@ Flujo **Agente inmobiliario: reporte semanal de no calificados** (id `rqPgSXmlwJ
 
 Para activarlo: asignar una credencial Gmail (OAuth2) al nodo **Enviar reporte**, poner el correo del administrador en los parámetros y activar el flujo. El nodo **Ejecutar ahora** permite probarlo a mano.
 
+## Sincronizar barrios atendidos
+
+Flujo **Agente inmobiliario: sincronizar barrios atendidos** (id `IoRRrBoydHaPnWxs`, `n8n/sincronizar-barrios.json`), **activo**. Cada 15 minutos lee la hoja de barrios (`tenant.json` → `hoja_barrios`), la prepara con `src/cobertura/barrios.js` y llama a `app.sincronizar_barrios`. Ver [cobertura.md](cobertura.md).
+
 ## Publicar cambios
 
 ```bash

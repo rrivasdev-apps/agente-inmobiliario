@@ -52,6 +52,7 @@ Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https
 | Todo umbral es parámetro | 9 oct 2026 | `config/tenants/<tenant>/tenant.json` → `parametros` (ver [configuracion.md](configuracion.md)) |
 
 | Validación de Javier | 17 oct 2026 | `entregables/Validacion_Lucia_Sonia_validado_2026-10-17.xlsx`: mensajes aprobados; horario 9:00 a. m. a 9:00 p. m.; tipos apartamento, casa, terreno, oficina; valor mínimo de venta 200.000.000 COP; ciudades y destinatarios del reporte en tablas (`app.ciudades_cobertura`, `app.usuarios`). Pendientes: video, borrador del acuerdo, dossier y marca de las plantillas de Meta |
+| Cobertura por barrio desde hoja de Google | 19 oct 2026 | `app.barrios_cobertura` sincronizada cada 15 min por n8n. Ver [cobertura.md](cobertura.md). Pendiente: que Lucía la use al calificar, y reconciliar los demás acuerdos de la reunión (precio mínimo 450 M, premium > 1.000 M, solo venta, tono formal, Sonia inactiva) |
 
 ## Decisiones pendientes que bloquean etapas
 

@@ -9,6 +9,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { validarCriterios } = require('../src/calificacion/evaluar');
+const { prepararSincronizacion, parsearCsv } = require('../src/cobertura/barrios');
 
 const raiz = path.resolve(__dirname, '..');
 const leer = (...p) => fs.readFileSync(path.join(raiz, ...p), 'utf8');
@@ -84,6 +85,14 @@ function generarTenant(dir) {
     const conflicto = p.rol ? '(tenant_id, rol_codigo, clave) where rol_codigo is not null' : '(tenant_id, clave) where rol_codigo is null';
     sql.push(`insert into app.plantillas (tenant_id, rol_codigo, clave, texto, requiere_aprobacion_meta) values (${tid}, ${lit(p.rol)}, ${lit(p.clave)}, ${lit(p.texto)}, ${Boolean(p.requiere_aprobacion_meta)})`
       + ` on conflict ${conflicto} do update set texto = excluded.texto, requiere_aprobacion_meta = excluded.requiere_aprobacion_meta;`);
+  }
+  // Barrios atendidos: solo se siembran si el tenant no tiene ninguno. Después
+  // los mantiene la hoja de Google vía n8n (docs/cobertura.md) y el seed no los pisa.
+  const barrios = path.join(raiz, 'config', 'tenants', dir, 'barrios.csv');
+  if (fs.existsSync(barrios)) {
+    const { filas, advertencias } = prepararSincronizacion(parsearCsv(fs.readFileSync(barrios, 'utf8')));
+    sql.push(`select app.sincronizar_barrios(${lit(t.slug)}, ${json(filas)}, ${json(advertencias)})`
+      + ` where not exists (select 1 from app.barrios_cobertura where tenant_id = ${tid});`);
   }
   return sql.join('\n');
 }

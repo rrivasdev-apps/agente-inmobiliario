@@ -1,6 +1,7 @@
 'use strict';
 
-// Genera los flujos de n8n (n8n/agente-inmobiliario.json y n8n/reporte-no-calificados.json)
+// Genera los flujos de n8n (n8n/agente-inmobiliario.json, n8n/reporte-no-calificados.json y
+// n8n/sincronizar-barrios.json)
 // a partir de src/ y prompts/.
 // Uso: node scripts/generar-n8n.js [--check]
 //   --check  falla si el archivo no está actualizado.
@@ -34,6 +35,7 @@ const MODULOS = {
   agenda: () => modulo('agenda', 'src/n8n/agenda.js'),
   ghl: () => modulo('ghl', 'src/integraciones/gohighlevel.js'),
   reporte: () => modulo('reporte', 'src/n8n/reporte.js'),
+  barrios: () => modulo('barrios', 'src/cobertura/barrios.js'),
 };
 
 const B64 = "const b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');";
@@ -522,9 +524,56 @@ const flujoReporte = {
   settings: { executionOrder: 'v1', timezone: 'America/Bogota' },
 };
 
+// --- Flujo 3: sincronizar barrios atendidos desde la hoja de Google ---------------------------
+// Cada 15 minutos lee la hoja que edita el equipo (config/tenants/<t>/tenant.json →
+// hoja_barrios) y actualiza app.barrios_cobertura (docs/cobertura.md). Si la hoja llega
+// vacía o incompleta, app.sincronizar_barrios lo rechaza y la ejecución queda en error.
+
+nodos.length = 0;
+for (const k of Object.keys(conexiones)) delete conexiones[k];
+secuencia = 200;
+
+const tenantBarrios = JSON.parse(leer('config', 'tenants', 'javier-nunez', 'tenant.json'));
+const hoja = tenantBarrios.hoja_barrios;
+
+nodo('Cada 15 minutos', 'n8n-nodes-base.scheduleTrigger', 1.2, [x(0), 0], {
+  rule: { interval: [{ field: 'minutes', minutesInterval: 15 }] },
+});
+nodo('Ejecutar ahora', 'n8n-nodes-base.manualTrigger', 1, [x(0), 200], {});
+nodo('Leer hoja de barrios', 'n8n-nodes-base.googleSheets', 4.7, [x(1), 100], {
+  documentId: { __rl: true, mode: 'id', value: hoja.spreadsheet_id },
+  sheetName: { __rl: true, mode: 'list', value: `gid=${hoja.gid}`, cachedResultName: hoja.pestana },
+  options: {},
+}, {
+  // Sin filas igual sigue: app.sincronizar_barrios rechaza una hoja vacía y la ejecución queda en error.
+  alwaysOutputData: true,
+  retryOnFail: true, maxTries: 2, waitBetweenTries: 5000,
+  notes: 'Credencial: Google Sheets (OAuth2) con acceso a la hoja', notesInFlow: true,
+});
+code('Preparar filas', [x(2), 100], ['barrios'], `
+const filas = $input.all().map((i) => i.json).filter((f) => Object.keys(f).length > 0);
+const r = barrios.prepararSincronizacion(filas);
+return [{ json: { filas_b64: b64(r.filas), advertencias_b64: b64(r.advertencias), filas: r.filas.length, advertencias: r.advertencias.length } }];
+`, false);
+postgres('Sincronizar en Supabase', [x(3), 100],
+  `select app.sincronizar_barrios('${tenantBarrios.slug}', ${jsonb('filas_b64')}, ${jsonb('advertencias_b64')}) as r`);
+
+conectar('Cada 15 minutos', 'Leer hoja de barrios');
+conectar('Ejecutar ahora', 'Leer hoja de barrios');
+conectar('Leer hoja de barrios', 'Preparar filas');
+conectar('Preparar filas', 'Sincronizar en Supabase');
+
+const flujoBarrios = {
+  name: 'Agente inmobiliario: sincronizar barrios atendidos',
+  nodes: [...nodos],
+  connections: { ...conexiones },
+  settings: { executionOrder: 'v1', timezone: 'America/Bogota' },
+};
+
 const SALIDAS = [
   [destino, flujo],
   [path.join(raiz, 'n8n', 'reporte-no-calificados.json'), flujoReporte],
+  [path.join(raiz, 'n8n', 'sincronizar-barrios.json'), flujoBarrios],
 ];
 
 if (require.main === module) {
@@ -548,4 +597,4 @@ if (require.main === module) {
   if (process.argv.includes('--check')) console.log('Flujos de n8n actualizados.');
 }
 
-module.exports = { flujo, flujoReporte, EXPRESION_TRAE_MENSAJES };
+module.exports = { flujo, flujoReporte, flujoBarrios, EXPRESION_TRAE_MENSAJES };

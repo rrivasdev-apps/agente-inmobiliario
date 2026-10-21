@@ -7,7 +7,7 @@ const meta = require('../src/n8n/meta');
 const geo = require('../src/n8n/geocodificacion');
 const conv = require('../src/n8n/conversacion');
 const { evaluarCalificacion } = require('../src/calificacion/evaluar');
-const { flujo, flujoReporte, EXPRESION_TRAE_MENSAJES } = require('../scripts/generar-n8n');
+const { flujo, flujoReporte, flujoBarrios, EXPRESION_TRAE_MENSAJES } = require('../scripts/generar-n8n');
 const reporte = require('../src/n8n/reporte');
 const { parametros } = require('../config/tenants/javier-nunez/tenant.json');
 
@@ -936,4 +936,32 @@ test('flujo: la preferencia llega de Registrar datos hasta la consulta de horari
   const r = ctxBase({ evaluacion: { accion: 'ofrecer_agenda' }, conversacion: { ...ctxBase().conversacion, agenda: { ofrecidos: ['x'] } } });
   const plan = await ejecutarCode('Planificar agenda', { r }, { 'Registrar datos': { r: { seleccion: null, preferencia_horario: pref } } });
   assert.deepEqual(plan.json.plan, { paso: 'ofrecer', preferencia: pref });
+});
+
+// --- Sincronizar barrios ----------------------------------------------------------------
+
+test('barrios: lee la hoja configurada y llama a app.sincronizar_barrios', () => {
+  const hoja = flujoBarrios.nodes.find((n) => n.type === 'n8n-nodes-base.googleSheets');
+  const { hoja_barrios } = require('../config/tenants/javier-nunez/tenant.json');
+  assert.equal(hoja.parameters.documentId.value, hoja_barrios.spreadsheet_id);
+  assert.equal(hoja.parameters.sheetName.value, `gid=${hoja_barrios.gid}`);
+  const pg = flujoBarrios.nodes.find((n) => n.type === 'n8n-nodes-base.postgres');
+  assert.match(pg.parameters.query, /app\.sincronizar_barrios\('javier-nunez', convert_from\(decode\('\{\{ \$json\.filas_b64 \}\}'/);
+  const destinos = Object.values(flujoBarrios.connections).flatMap((c) => c.main.flat().map((d) => d.node));
+  for (const n of flujoBarrios.nodes) {
+    if (!n.type.endsWith('Trigger')) assert.ok(destinos.includes(n.name), `nodo huérfano: ${n.name}`);
+  }
+});
+
+test('barrios: el nodo Code prepara las 447 filas de la hoja de hoy', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { parsearCsv } = require('../src/cobertura/barrios');
+  const filas = parsearCsv(fs.readFileSync(path.join(__dirname, '..', 'config', 'tenants', 'javier-nunez', 'barrios.csv'), 'utf8'));
+  const codigo = flujoBarrios.nodes.find((n) => n.name === 'Preparar filas').parameters.jsCode;
+  const $input = { all: () => [...filas.map((json, i) => ({ json: { row_number: i + 2, ...json } })), { json: {} }] };
+  const [salida] = await new AsyncFunction('$input', 'Buffer', codigo)($input, Buffer);
+  assert.equal(salida.json.filas, 447);
+  assert.equal(decodificar(salida.json.filas_b64).filter((f) => f.atiende).length, 114);
+  assert.equal(decodificar(salida.json.advertencias_b64)[0].fila, 113);
 });
