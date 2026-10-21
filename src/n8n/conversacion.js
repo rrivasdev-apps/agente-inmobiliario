@@ -496,6 +496,20 @@ function instruccionPropuesta(ctx) {
   ].filter(Boolean).join(' ').replace(/el asesor/g, v.asesor);
 }
 
+// Mientras falten datos el agente no adelanta la agenda: así no da por terminada
+// la calificación ni ofrece horarios que el sistema no le dio.
+const FALTAN_DATOS = 'Aún faltan datos: no digas que ya tienes toda la información, no hables de agendar ni ofrezcas días u horarios.';
+
+const VERBO_OPERACION = { venta: 'vender', arriendo: 'arrendar' };
+
+/** Pregunta fija del campo (roles_agente.campos[].pregunta), con {{operacion}} como verbo. */
+function preguntaDeCampo(ctx, clave) {
+  const campo = (ctx.rol.campos || []).find((c) => c.clave === clave);
+  if (!campo || !campo.pregunta) return null;
+  const operacion = VERBO_OPERACION[(ctx.contacto.datos || {}).operacion] || 'vender o arrendar';
+  return rellenar(campo.pregunta, { operacion });
+}
+
 function instruccionSiguientePaso(ctx, ev) {
   const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));
   switch (ev.accion) {
@@ -506,9 +520,15 @@ function instruccionSiguientePaso(ctx, ev) {
       if (siguiente === 'nombre' && (ctx.contacto.datos || {}).nombre) {
         return 'Pide su nombre completo con esta frase: "¿Me puedes facilitar tu nombre completo, por favor?"';
       }
-      return siguiente
-        ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`
-        : 'Pide la información que falte para continuar.';
+      const pregunta = preguntaDeCampo(ctx, siguiente);
+      return [
+        pregunta
+          ? `Pide solo el siguiente dato (${etiquetas.get(siguiente) || siguiente}) con esta pregunta: "${pregunta}"`
+          : siguiente
+            ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`
+            : 'Pide la información que falte para continuar.',
+        FALTAN_DATOS,
+      ].join(' ');
     }
     case 'presentar_propuesta':
       return instruccionPropuesta(ctx);
@@ -680,12 +700,40 @@ function planificarRespuesta(ctx) {
   return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };
 }
 
-function interpretarRedaccion(respuesta) {
+// "10:00 a. m.", "3 p. m.", "15:30": horas en un mensaje.
+const HORA = /\b\d{1,2}(:\d{2})?\s*(a|p)\.?\s?m\b\.?|\b\d{1,2}:\d{2}\b/i;
+
+/**
+ * Red de seguridad (AC 30): si el sistema no dio horarios en este turno y el
+ * texto redactado trae horas, el LLM los inventó. Se descarta y se envía la
+ * pregunta pendiente. Devuelve null si el texto es válido.
+ */
+function reemplazoSinHorarios(ctx, texto) {
+  const ev = (ctx && ctx.evaluacion) || {};
+  if (!ctx || ctx.retorno || !['solicitar_datos', 'presentar_propuesta'].includes(ev.accion) || !HORA.test(texto)) return null;
+  if (ev.accion === 'presentar_propuesta') return '¿Hay algún punto que quieras aclarar antes de continuar?';
+  const siguiente = (ev.campos_faltantes || [])[0];
+  const pregunta = preguntaDeCampo(ctx, siguiente);
+  if (pregunta) return pregunta;
+  const campo = (ctx.rol.campos || []).find((c) => c.clave === siguiente);
+  return campo ? `Para continuar, ¿me indicas ${campo.etiqueta.toLowerCase()}?` : RESPUESTA_SEGURA;
+}
+
+function interpretarRedaccion(respuesta, ctx) {
   const r = contenidoOpenAI(respuesta);
   if (r.error) {
     return { texto: RESPUESTA_SEGURA, plantilla: null, eventos: [evento('error', 'openai', 'redactar_respuesta', r.error)] };
   }
-  return { texto: r.contenido.replace(/^"(.*)"$/s, '$1'), plantilla: null, eventos: [] };
+  const texto = r.contenido.replace(/^"(.*)"$/s, '$1');
+  const reemplazo = reemplazoSinHorarios(ctx, texto);
+  if (reemplazo) {
+    return {
+      texto: reemplazo,
+      plantilla: null,
+      eventos: [evento('advertencia', 'openai', 'redactar_respuesta', 'La redacción ofrecía horarios que el sistema no dio; se reemplazó por la pregunta pendiente', { texto_descartado: texto })],
+    };
+  }
+  return { texto, plantilla: null, eventos: [] };
 }
 
 module.exports = {

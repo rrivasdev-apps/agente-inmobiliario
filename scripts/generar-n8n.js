@@ -445,7 +445,7 @@ si('¿Respuesta fija?', [x(33), -80], '!!$json.plan.respuesta_fija');
 openai('OpenAI: redactar respuesta', [x(34), -240], '$json.plan.solicitud_llm');
 code('Interpretar redacción', [x(35), -240], ['conversacion'], `
 const previo = $('Planificar respuesta').item.json;
-const redaccion = conversacion.interpretarRedaccion($json);
+const redaccion = conversacion.interpretarRedaccion($json, previo.r);
 return { json: { r: previo.r, respuesta: { ...redaccion, eventos: [...previo.plan.eventos, ...redaccion.eventos] } } };
 `);
 

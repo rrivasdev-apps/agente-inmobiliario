@@ -972,3 +972,38 @@ test('barrios: el nodo Code prepara las 447 filas de la hoja de hoy', async () =
   assert.equal(decodificar(salida.json.filas_b64).filter((f) => f.atiende).length, 114);
   assert.equal(decodificar(salida.json.advertencias_b64)[0].fila, 113);
 });
+
+// --- Prueba del 21 oct: faltaba intencion_venta y el LLM ofreció horarios inventados ---------
+
+test('faltan datos: pregunta fija del campo y prohibición de adelantar la agenda', () => {
+  const ctx = ctxBase({
+    contacto: { ...ctxBase().contacto, datos: { acepta_preguntas: true, operacion: 'venta' } },
+    evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['intencion_venta'] },
+  });
+  const sistema = conv.planificarRespuesta(ctx).solicitud_llm.messages[0].content;
+  assert.match(sistema, /con esta pregunta: "Para confirmar: ¿tu intención es vender el inmueble, o por ahora solo estás evaluando hacerlo\?"/);
+  assert.match(sistema, /no digas que ya tienes toda la información, no hables de agendar ni ofrezcas días u horarios/);
+});
+
+test('redacción con horarios que el sistema no dio: se reemplaza por la pregunta pendiente', () => {
+  const ctx = ctxBase({
+    contacto: { ...ctxBase().contacto, datos: { operacion: 'venta' } },
+    evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['intencion_venta'] },
+  });
+  const inventado = 'Estos son los horarios disponibles: miércoles a las 10:00 a. m., jueves a las 3:00 p. m. y viernes a las 11:00 a. m.';
+  const r = conv.interpretarRedaccion(openaiOk(inventado), ctx);
+  assert.equal(r.texto, 'Para confirmar: ¿tu intención es vender el inmueble, o por ahora solo estás evaluando hacerlo?');
+  assert.equal(r.eventos[0].nivel, 'advertencia');
+  assert.equal(r.eventos[0].contexto.texto_descartado, inventado);
+  assert.equal(conv.interpretarRedaccion(openaiOk('Por ahora solo tengo el jueves a las 3 p. m.'), ctx).eventos.length, 1);
+
+  // Con la propuesta pendiente tampoco se ofrecen horarios.
+  const propuesta = ctxBase({ evaluacion: { accion: 'presentar_propuesta', campos_faltantes: [] } });
+  assert.equal(conv.interpretarRedaccion(openaiOk('¿Te sirve el jueves a las 15:00?'), propuesta).texto, '¿Hay algún punto que quieras aclarar antes de continuar?');
+
+  // Con horarios del sistema (ofrecer_agenda) o sin horas, el texto se respeta.
+  const agenda = ctxBase({ evaluacion: { accion: 'ofrecer_agenda', campos_faltantes: [] } });
+  assert.equal(conv.interpretarRedaccion(openaiOk('Elige: 1. Viernes 9:00 a. m.'), agenda).texto, 'Elige: 1. Viernes 9:00 a. m.');
+  assert.equal(conv.interpretarRedaccion(openaiOk('¿Tu apartamento tiene 3 habitaciones?'), ctx).texto, '¿Tu apartamento tiene 3 habitaciones?');
+  assert.equal(conv.interpretarRedaccion(openaiOk('Hola Ana')).texto, 'Hola Ana');
+});
