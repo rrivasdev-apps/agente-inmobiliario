@@ -941,10 +941,10 @@ test('flujo: la preferencia llega de Registrar datos hasta la consulta de horari
 // --- Sincronizar barrios ----------------------------------------------------------------
 
 test('barrios: lee la hoja configurada y llama a app.sincronizar_barrios', () => {
-  const hoja = flujoBarrios.nodes.find((n) => n.type === 'n8n-nodes-base.googleSheets');
+  const hoja = flujoBarrios.nodes.find((n) => n.name === 'Leer hoja de barrios');
   const { hoja_barrios } = require('../config/tenants/javier-nunez/tenant.json');
-  assert.equal(hoja.parameters.documentId.value, hoja_barrios.spreadsheet_id);
-  assert.equal(hoja.parameters.sheetName.value, `gid=${hoja_barrios.gid}`);
+  assert.equal(hoja.parameters.url, `https://sheets.googleapis.com/v4/spreadsheets/${hoja_barrios.spreadsheet_id}/values/A:Z`);
+  assert.equal(hoja.parameters.nodeCredentialType, 'googleSheetsOAuth2Api');
   const pg = flujoBarrios.nodes.find((n) => n.type === 'n8n-nodes-base.postgres');
   assert.match(pg.parameters.query, /app\.sincronizar_barrios\('javier-nunez', convert_from\(decode\('\{\{ \$json\.filas_b64 \}\}'/);
   const destinos = Object.values(flujoBarrios.connections).flatMap((c) => c.main.flat().map((d) => d.node));
@@ -959,7 +959,14 @@ test('barrios: el nodo Code prepara las 447 filas de la hoja de hoy', async () =
   const { parsearCsv } = require('../src/cobertura/barrios');
   const filas = parsearCsv(fs.readFileSync(path.join(__dirname, '..', 'config', 'tenants', 'javier-nunez', 'barrios.csv'), 'utf8'));
   const codigo = flujoBarrios.nodes.find((n) => n.name === 'Preparar filas').parameters.jsCode;
-  const $input = { all: () => [...filas.map((json, i) => ({ json: { row_number: i + 2, ...json } })), { json: {} }] };
+  // Como responde values.get: encabezados y filas; Google omite las celdas vacías del final.
+  const encabezados = Object.keys(filas[0]);
+  const values = [encabezados, ...filas.map((f) => {
+    const v = encabezados.map((h) => f[h]);
+    while (v.length && v[v.length - 1] === '') v.pop();
+    return v;
+  })];
+  const $input = { first: () => ({ json: { range: 'A1:Z448', values } }) };
   const [salida] = await new AsyncFunction('$input', 'Buffer', codigo)($input, Buffer);
   assert.equal(salida.json.filas, 447);
   assert.equal(decodificar(salida.json.filas_b64).filter((f) => f.atiende).length, 114);

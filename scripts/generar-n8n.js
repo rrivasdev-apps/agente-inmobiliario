@@ -540,18 +540,21 @@ nodo('Cada 15 minutos', 'n8n-nodes-base.scheduleTrigger', 1.2, [x(0), 0], {
   rule: { interval: [{ field: 'minutes', minutesInterval: 15 }] },
 });
 nodo('Ejecutar ahora', 'n8n-nodes-base.manualTrigger', 1, [x(0), 200], {});
-nodo('Leer hoja de barrios', 'n8n-nodes-base.googleSheets', 4.7, [x(1), 100], {
-  documentId: { __rl: true, mode: 'id', value: hoja.spreadsheet_id },
-  sheetName: { __rl: true, mode: 'list', value: `gid=${hoja.gid}`, cachedResultName: hoja.pestana },
-  options: {},
+// Un rango sin nombre de pestaña ("A:Z") lee la primera pestaña: no depende de su
+// id ni de su nombre, que el equipo puede cambiar.
+nodo('Leer hoja de barrios', 'n8n-nodes-base.httpRequest', 4.2, [x(1), 100], {
+  method: 'GET',
+  url: `https://sheets.googleapis.com/v4/spreadsheets/${hoja.spreadsheet_id}/values/A:Z`,
+  authentication: 'predefinedCredentialType',
+  nodeCredentialType: 'googleSheetsOAuth2Api',
+  options: { timeout: 30000 },
 }, {
-  // Sin filas igual sigue: app.sincronizar_barrios rechaza una hoja vacía y la ejecución queda en error.
-  alwaysOutputData: true,
   retryOnFail: true, maxTries: 2, waitBetweenTries: 5000,
   notes: 'Credencial: Google Sheets (OAuth2) con acceso a la hoja', notesInFlow: true,
 });
 code('Preparar filas', [x(2), 100], ['barrios'], `
-const filas = $input.all().map((i) => i.json).filter((f) => Object.keys(f).length > 0);
+// Una hoja vacía produce 0 filas: app.sincronizar_barrios la rechaza y la ejecución queda en error.
+const filas = barrios.filasDesdeValores($input.first().json.values);
 const r = barrios.prepararSincronizacion(filas);
 return [{ json: { filas_b64: b64(r.filas), advertencias_b64: b64(r.advertencias), filas: r.filas.length, advertencias: r.advertencias.length } }];
 `, false);

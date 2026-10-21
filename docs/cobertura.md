@@ -10,7 +10,7 @@
 Hoja "Barrios cobertura — JNdelT" ──(n8n cada 15 min)──▶ app.sincronizar_barrios ──▶ app.barrios_cobertura
 ```
 
-- Hoja: https://docs.google.com/spreadsheets/d/1KMHWZz4TyT9iEcCxHsv_JAEjMcCOwN5i6k1xyYgrxxU (primera pestaña; id en `config/tenants/javier-nunez/tenant.json` → `hoja_barrios`).
+- Hoja: https://docs.google.com/spreadsheets/d/1KMHWZz4TyT9iEcCxHsv_JAEjMcCOwN5i6k1xyYgrxxU (id en `config/tenants/javier-nunez/tenant.json` → `hoja_barrios`). El flujo lee siempre la **primera pestaña** con la API de Sheets (rango `A:Z`), sin importar su nombre; los encabezados deben quedar en la fila 1.
 - Flujo de n8n: **Agente inmobiliario: sincronizar barrios atendidos** (id `IoRRrBoydHaPnWxs`, `n8n/sincronizar-barrios.json`), activo. Credenciales: `Google Sheets account` y `Postgres account`.
 
 Qué edita el equipo en la hoja:

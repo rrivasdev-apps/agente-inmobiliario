@@ -125,6 +125,18 @@ function prepararSincronizacion(filasHoja, { primeraFila = 2 } = {}) {
 
 // CSV con comillas al estilo RFC 4180, como lo exporta Google Sheets. Devuelve
 // objetos con los encabezados como claves, igual que el nodo de n8n.
+/**
+ * Convierte la respuesta de la API de Google Sheets (values.get: arreglo de
+ * filas, la primera con los encabezados) en objetos con número de fila.
+ */
+function filasDesdeValores(valores) {
+  const [encabezados = [], ...resto] = valores || [];
+  return resto.map((f, i) => ({
+    row_number: i + 2,
+    ...Object.fromEntries(encabezados.map((h, j) => [h, f[j] == null ? '' : f[j]])),
+  }));
+}
+
 function parsearCsv(texto) {
   const filas = [];
   let fila = [];
@@ -212,4 +224,4 @@ function resolverBarrio(texto, barrios, { localidad, upz, barrioGeocodificado } 
   return { estado: marca ? ESTADO_ZONA.ATENDIDO : ESTADO_ZONA.NO_ATENDIDO, candidatos: lista };
 }
 
-module.exports = { prepararSincronizacion, resolverBarrio, parsearCsv, ESTADO_ZONA };
+module.exports = { prepararSincronizacion, resolverBarrio, parsearCsv, filasDesdeValores, ESTADO_ZONA };
