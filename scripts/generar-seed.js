@@ -38,7 +38,8 @@ function validarRol(dir, r, parametros) {
   const campos = r.criterios.campos_obligatorios.map((c) => (typeof c === 'string' ? c : c.campo));
   const desconocidos = campos.filter((c) => !claves.has(c));
   if (desconocidos.length) errores.push(`campos obligatorios sin definir: ${desconocidos.join(', ')}`);
-  const rutas = [...r.criterios.reglas.map((x) => x.parametro), r.criterios.prioridad && r.criterios.prioridad.parametro]
+  const pr = r.criterios.prioridad || {};
+  const rutas = [...r.criterios.reglas.map((x) => x.parametro), pr.parametro, pr.agenda_baja_parametro]
     .filter((x) => typeof x === 'string');
   const sinParametro = rutas.filter((ruta) => !existeRuta(parametros, ruta));
   if (sinParametro.length) errores.push(`parámetros no definidos en tenant.json: ${sinParametro.join(', ')}`);

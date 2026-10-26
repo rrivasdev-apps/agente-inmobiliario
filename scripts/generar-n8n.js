@@ -281,8 +281,8 @@ code('Clasificar dirección', [x(20), -240], ['geocodificacion'],
   SALIDA_BD("$('Preparar geocodificación').item.json.r", "geocodificacion.clasificarGeocodificacion($json, $('Preparar geocodificación').item.json.r.contacto.datos.ciudad)"));
 postgres('Registrar verificación', [x(21), -240], llamada('registrar_verificacion'));
 
-code('Evaluar calificación', [x(22), -80], ['evaluar', 'conversacion'],
-  SALIDA_BD('$json.r', 'conversacion.evaluarTurno(r, evaluar.evaluarCalificacion)'));
+code('Evaluar calificación', [x(22), -80], ['evaluar', 'barrios', 'conversacion'],
+  SALIDA_BD('$json.r', 'conversacion.evaluarTurno(r, evaluar.evaluarCalificacion, barrios.resolverBarrio)'));
 postgres('Guardar evaluación', [x(23), -80], llamada('guardar_evaluacion'));
 
 conectar('Preparar extracción', 'OpenAI: extraer datos');
@@ -439,19 +439,20 @@ conectar('¿Horario agotado?', 'Planificar respuesta', 1);
 // --- Respuesta y envío ------------------------------------------------------------------
 
 code('Planificar respuesta', [x(32), -80], ['conversacion'], `
-return { json: { r: $json.r, plan: conversacion.planificarRespuesta($json.r) } };
+// planificarRespuesta elige la plantilla; guiarRespuesta la deja literal (Meta) o la manda a redactar.
+return { json: { r: $json.r, plan: conversacion.guiarRespuesta($json.r, conversacion.planificarRespuesta($json.r)) } };
 `);
 si('¿Respuesta fija?', [x(33), -80], '!!$json.plan.respuesta_fija');
 openai('OpenAI: redactar respuesta', [x(34), -240], '$json.plan.solicitud_llm');
 code('Interpretar redacción', [x(35), -240], ['conversacion'], `
 const previo = $('Planificar respuesta').item.json;
-const redaccion = conversacion.interpretarRedaccion($json, previo.r);
+const redaccion = conversacion.interpretarRedaccion($json, previo.r, previo.plan);
 return { json: { r: previo.r, respuesta: { ...redaccion, eventos: [...previo.plan.eventos, ...redaccion.eventos] } } };
 `);
 
 code('Preparar envío', [x(36), -80], ['meta'], `
-const respuesta = $json.respuesta || { ...$json.plan.respuesta_fija, eventos: $json.plan.eventos };
-return { json: { r: $json.r, respuesta, envio: meta.solicitudEnvio($json.r, respuesta.texto, respuesta.documento) } };
+const respuesta = $json.respuesta || { ...$json.plan.respuesta_fija, opciones: $json.plan.opciones, eventos: $json.plan.eventos };
+return { json: { r: $json.r, respuesta, envio: meta.solicitudEnvio($json.r, respuesta.texto, respuesta.documento, respuesta.opciones) } };
 `);
 si('¿WhatsApp?', [x(37), -80], "$json.r.canal.tipo === 'whatsapp'");
 graph('WhatsApp: enviar', [x(38), -240], 'Credencial Header Auth: Meta WhatsApp');

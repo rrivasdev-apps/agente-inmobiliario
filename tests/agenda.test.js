@@ -104,3 +104,16 @@ test('reserva: solo horarios ofrecidos y resultado listo para la plantilla de co
   assert.equal(r.resultado.confirmada, false);
   assert.equal(r.resultado.motivo, 'configuracion');
 });
+
+test('prioridad B: los horarios se consultan y se ofrecen desde los días configurados', () => {
+  const ahora = new Date('2026-10-11T12:00:00Z');
+  const b = ctx({ evaluacion: { resultado: 'calificado', accion: 'ofrecer_agenda', prioridad: 'baja', agendar_desde_dias: 14 } });
+  const s = agenda.solicitudHorarios(b, ghl, ahora);
+  assert.equal(new Date(s.solicitud.consulta.startDate).toISOString(), '2026-10-25T05:00:00.000Z', 'desde el inicio del día 14, hora de Bogotá');
+  const r = agenda.interpretarHorarios({
+    statusCode: 200,
+    body: { '2026-10-12': { slots: [OFRECIDOS[0]] }, '2026-10-26': { slots: ['2026-10-26T10:00:00-05:00'] } },
+  }, b, ghl, ahora);
+  assert.deepEqual(r.ofrecidos, ['2026-10-26T10:00:00-05:00'], 'no ofrece horarios antes de esa fecha');
+  assert.equal(agenda.planificarAgenda(b, null).paso, 'ofrecer', 'prioridad B también se agenda');
+});

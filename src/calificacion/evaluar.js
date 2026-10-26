@@ -22,13 +22,18 @@
  *
  * - `si`: la regla o el campo obligatorio solo aplica cuando otro dato tiene
  *   ese valor (o uno de los valores de un arreglo).
+ * - `salvo`: al revés que `si`: no aplica cuando otro dato tiene ese valor
+ *   (p. ej. el valor de la propiedad no se exige a quien ya dijo que no lo sabe).
  * - `parametro`: el valor sale de los parámetros del tenant (ruta con puntos).
  *   Si el parámetro está vacío (null), la regla no se aplica.
  * - `temprana`: la regla se aplica apenas se conoce su dato, aunque falten
  *   otros (p. ej. cobertura): si falla, no se prolonga la calificación.
  * - `prioridad`: quien cumple los criterios es "alta" si el plazo (en meses)
- *   es menor o igual al umbral, y "baja" si no. Alta -> ofrecer agenda;
- *   baja -> nutrir (no se agenda).
+ *   es menor o igual al umbral, y "baja" si no. Alta -> ofrecer agenda.
+ *   Baja -> nutrir (no se agenda), salvo que `agenda_baja_parametro` apunte a
+ *   un número de días: entonces baja también se agenda, a partir de esos días
+ *   (prioridad B = agendar a futuro, decisión del 26 oct 2026).
+ *   `baja_si` ({ campo, valor }) fuerza prioridad baja (p. ej. no dio el valor).
  *
  * Operadores: igual, distinto, en, no_en, mayor_o_igual, menor_o_igual,
  * entre ([min, max]), presente.
@@ -86,6 +91,9 @@ function aplica(si, datos) {
   const esperados = Array.isArray(si.valor) ? si.valor : [si.valor];
   return esperados.map(normalizar).includes(valor);
 }
+
+/** `si` se cumple y `salvo` no: la regla o el campo aplica con estos datos. */
+const aplicaCondiciones = (c, datos) => aplica(c.si, datos) && !(c.salvo && aplica(c.salvo, datos));
 
 function campoObligatorio(c) {
   return typeof c === 'string' ? { campo: c, si: null } : c;
@@ -156,13 +164,16 @@ function validarCriterios(criterios) {
   } else {
     criterios.campos_obligatorios.forEach((c, i) => {
       if (typeof c === 'string') return;
-      if (!c || !c.campo || !c.si || !c.si.campo) errores.push(`campos_obligatorios[${i}]: requiere campo y si.campo`);
+      if (!c || !c.campo || !((c.si && c.si.campo) || (c.salvo && c.salvo.campo))) {
+        errores.push(`campos_obligatorios[${i}]: requiere campo y si.campo o salvo.campo`);
+      }
     });
   }
   if (criterios.prioridad !== undefined) {
     const pr = criterios.prioridad;
     if (!pr || !pr.campo) errores.push('prioridad: falta campo');
     else if (pr.parametro === undefined && typeof pr.valor !== 'number') errores.push('prioridad: requiere valor numérico o parametro');
+    else if (pr.baja_si && !pr.baja_si.campo) errores.push('prioridad: baja_si requiere campo');
   }
   if (!Array.isArray(criterios.reglas)) {
     errores.push('reglas debe ser un arreglo');
@@ -178,6 +189,7 @@ function validarCriterios(criterios) {
     if (!r.motivo) errores.push(`${p}: falta motivo`);
     if (!OPERADORES.has(r.operador)) errores.push(`${p}: operador inválido "${r.operador}"`);
     if (r.si && !r.si.campo) errores.push(`${p}: si requiere campo`);
+    if (r.salvo && !r.salvo.campo) errores.push(`${p}: salvo requiere campo`);
     if (r.parametro !== undefined) {
       if (typeof r.parametro !== 'string' || !r.parametro) errores.push(`${p}: parametro debe ser una ruta`);
       return; // el valor se valida al evaluar, con los parámetros del tenant
@@ -206,7 +218,7 @@ function evaluarCalificacion({ criterios, requiereVerificacionDireccion, datos, 
   const datosSeguros = datos || {};
   const faltantes = criterios.campos_obligatorios
     .map(campoObligatorio)
-    .filter((c) => aplica(c.si, datosSeguros))
+    .filter((c) => aplicaCondiciones(c, datosSeguros))
     .map((c) => c.campo)
     .filter((c) => !estaPresente(obtener(datosSeguros, c)));
 
@@ -280,20 +292,30 @@ function evaluarCalificacion({ criterios, requiereVerificacionDireccion, datos, 
   const reglas = evaluarReglas(criterios.reglas, datosSeguros, parametros);
   if (reglas.some((r) => !r.cumple)) return noCalificado(base, reglas);
 
-  // 4. Prioridad: quien califica se agenda si es urgente; si no, se nutre.
+  // 4. Prioridad: quien califica se agenda si es urgente; si no, se nutre o
+  // se agenda a futuro, según el tenant.
   const prioridad = calcularPrioridad(criterios.prioridad, datosSeguros, parametros);
+  const diasBaja = diasAgendaBaja(criterios.prioridad, parametros);
   return {
     ...base,
     reglas,
     prioridad,
     resultado: RESULTADO.CALIFICADO,
-    accion: prioridad === PRIORIDAD.BAJA ? ACCION.NUTRIR : ACCION.OFRECER_AGENDA,
+    accion: prioridad === PRIORIDAD.BAJA && diasBaja === null ? ACCION.NUTRIR : ACCION.OFRECER_AGENDA,
+    ...(prioridad === PRIORIDAD.BAJA && diasBaja !== null ? { agendar_desde_dias: diasBaja } : {}),
   };
+}
+
+/** Días a partir de los cuales se agenda la prioridad baja, o null si se nutre. */
+function diasAgendaBaja(config, parametros) {
+  if (!config || !config.agenda_baja_parametro) return null;
+  const dias = obtener(parametros || {}, config.agenda_baja_parametro);
+  return typeof dias === 'number' && dias >= 0 ? dias : null;
 }
 
 function evaluarReglas(reglas, datos, parametros) {
   return reglas
-    .filter((regla) => aplica(regla.si, datos))
+    .filter((regla) => aplicaCondiciones(regla, datos))
     .map((regla) => (regla.parametro === undefined ? regla : { ...regla, valor: obtener(parametros || {}, regla.parametro) }))
     .filter((regla) => regla.valor !== undefined && regla.valor !== null)
     .map((regla) => {
@@ -319,6 +341,7 @@ function noCalificado(base, reglas) {
 /** Sin configuración de prioridad, o sin plazo legible, todo calificado es alta. */
 function calcularPrioridad(config, datos, parametros) {
   if (!config) return PRIORIDAD.ALTA;
+  if (config.baja_si && aplica(config.baja_si, datos)) return PRIORIDAD.BAJA;
   const umbral = config.parametro !== undefined ? obtener(parametros || {}, config.parametro) : config.valor;
   if (typeof umbral !== 'number') return PRIORIDAD.ALTA;
   const plazo = aNumero(obtener(datos, config.campo));

@@ -49,7 +49,8 @@ function planificarAgenda(ctx, seleccion, preferencia = null) {
   if (op.cita_compartida) {
     return ev.resultado === 'calificado' && !op.nota_asesor_en ? { paso: 'nota' } : { paso: null };
   }
-  // Solo prioridad alta se agenda; prioridad baja (accion nutrir) no.
+  // Prioridad alta se agenda; prioridad baja solo si el tenant la agenda a futuro
+  // (el evaluador devuelve ofrecer_agenda con agendar_desde_dias); si la nutre, no.
   if (ev.accion !== 'ofrecer_agenda' || ESTADOS_CON_CITA.has(ctx.contacto.estado) || citaVigente(ctx)) return { paso: null };
   // Quien regresa tras días sin escribir primero recibe el saludo; los horarios, en el turno siguiente.
   if (ctx.retorno) return { paso: null };
@@ -114,11 +115,23 @@ function inicioDelDia(fecha, zona) {
 
 const fechaLocal = (iso, zona) => new Intl.DateTimeFormat('en-CA', { timeZone: zona, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
 
+/**
+ * Prioridad B (agendar a futuro, 26 oct 2026): el evaluador indica desde
+ * cuántos días se ofrecen horarios (evaluacion.agendar_desde_dias). Devuelve
+ * el inicio de ese día en la zona del tenant, o `ahora` para prioridad alta.
+ */
+function primerDiaAgendable(ctx, ahora) {
+  const dias = Number((ctx.evaluacion || {}).agendar_desde_dias);
+  if (!Number.isFinite(dias) || dias <= 0) return ahora;
+  return inicioDelDia(fechaLocal(new Date(ahora.getTime() + dias * 86400000), ctx.tenant.zona_horaria), ctx.tenant.zona_horaria);
+}
+
 /** Con preferencia de fecha se consulta desde ese día (o desde ahora si ya empezó). */
 function solicitudHorarios(ctx, ghl, ahora = new Date(), preferencia = null) {
   const c = config(ctx, 'calendario');
   const desdeDia = preferencia && preferencia.fecha ? inicioDelDia(preferencia.fecha, ctx.tenant.zona_horaria) : null;
-  const desde = desdeDia && desdeDia > ahora ? desdeDia : ahora;
+  const minimo = primerDiaAgendable(ctx, ahora);
+  const desde = desdeDia && desdeDia > minimo ? desdeDia : minimo;
   return intentar(() => ghl.solicitudDisponibilidad({
     config: c, desde, dias: c.dias_a_consultar, zonaHoraria: ctx.tenant.zona_horaria,
   }));
@@ -176,7 +189,7 @@ function interpretarHorarios(respuesta, ctx, ghl, ahora = new Date(), preferenci
     antelacionMinutos: c.antelacion_minima_minutos ?? 60,
     maximo,
     maximoPorDia: porDia,
-    admitir: (iso) => dentroDelHorario(ctx)(iso) && !ocupado(ctx)(iso) && admitirExtra(iso),
+    admitir: (iso) => dentroDelHorario(ctx)(iso) && !ocupado(ctx)(iso) && new Date(iso) >= primerDiaAgendable(ctx, ahora) && admitirExtra(iso),
   });
   const salida = (ofrecidos, extra = {}) => ({ ofrecidos, texto: ghl.textoHorarios(ofrecidos, zona), error: null, ...extra });
 

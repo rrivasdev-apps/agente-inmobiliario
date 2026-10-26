@@ -5,8 +5,14 @@
  *
  * El LLM hace tres cosas acotadas: clasificar la intención, extraer datos y
  * redactar el mensaje. La calificación la decide src/calificacion/evaluar.js
- * y las respuestas sensibles (selección de intención, no calificado,
- * dirección ambigua, agenda) usan plantillas fijas del tenant.
+ * y planificarRespuesta elige qué plantilla del tenant corresponde (selección
+ * de intención, no calificado, dirección ambigua, agenda...).
+ *
+ * guiarRespuesta decide cómo se dice (26 oct 2026): las plantillas aprobadas
+ * por Meta salen literales; las demás son una guía que el LLM redacta con sus
+ * palabras, conservando el sentido. Los datos exactos (horarios, fechas,
+ * comisión, enlaces) viajan como marcadores {{...}} que el código rellena
+ * después: el LLM nunca los escribe.
  *
  * `ctx` es el contexto que devuelve app.contexto_conversacion.
  */
@@ -67,7 +73,16 @@ function valoresPrompt(ctx) {
     argumento_exclusividad: comercial.argumento_exclusividad || '',
     ciudades_cobertura: listaHumana(((ctx.tenant.parametros || {}).cobertura || {}).ciudades || []) || 'su zona de cobertura',
     propuesta: textoPropuesta(comercial.propuesta, comercial.asesor || 'el asesor'),
+    valor_minimo: millones(((ctx.tenant.parametros || {}).propietarios || {}).valor_minimo_cop),
+    valor_premium: millones(((ctx.tenant.parametros || {}).propietarios || {}).valor_premium_cop),
   };
+}
+
+/** 450000000 -> "450 millones de pesos"; 1000000000 -> "mil millones de pesos". */
+function millones(cop) {
+  if (typeof cop !== 'number') return 'el rango que se atiende';
+  if (cop === 1e9) return 'mil millones de pesos';
+  return `${new Intl.NumberFormat('es-CO').format(cop / 1e6)} millones de pesos`;
 }
 
 /** A nombre de quién se presenta la asistente: parametros.comercial.asesor_nombre_completo o la marca. */
@@ -86,9 +101,18 @@ function textoPropuesta(p, asesor) {
   if (!p) return 'aún no hay una propuesta aprobada; si preguntan por condiciones, explica que las aclara el asesor.';
   const partes = [];
   if (p.exclusiva) partes.push(`${asesor} trabaja la propiedad en exclusiva`);
-  if (typeof p.comision_pct === 'number') partes.push(`con una comisión del ${p.comision_pct} %`);
+  if (typeof p.comision_pct === 'number') {
+    partes.push(`con una comisión del ${p.comision_pct} %${p.comision_solo_si_vende ? ', que solo se paga si se concreta la venta' : ''}`);
+  }
   const beneficios = (p.beneficios || []).filter(Boolean);
-  return `${partes.join(' ') || `${asesor} explica sus condiciones en la llamada`}.${beneficios.length ? ` Beneficios aprobados: ${beneficios.join('; ')}.` : ''}`;
+  // Condiciones que Javier aún no confirmó quedan en null y no se mencionan.
+  const extra = [
+    typeof p.comision_comprador_propio_pct === 'number' ? `Si el propietario consigue al comprador, la comisión es del ${p.comision_comprador_propio_pct} %.` : null,
+    typeof p.plazo_exclusividad_meses === 'number' ? `La exclusividad es por ${p.plazo_exclusividad_meses} meses.` : null,
+    p.clausula_salida ? `Al final del plazo: ${p.clausula_salida}` : null,
+    p.informe_mensual ? 'Incluye un informe mensual con los resultados de la gestión.' : null,
+  ].filter(Boolean);
+  return `${partes.join(' ') || `${asesor} explica sus condiciones en la llamada`}.${extra.length ? ` ${extra.join(' ')}` : ''}${beneficios.length ? ` Beneficios aprobados: ${beneficios.join('; ')}.` : ''}`;
 }
 
 function mensajesHistorial(ctx, { soloCasoActual = false } = {}) {
@@ -289,13 +313,35 @@ function interpretarExtraccion(respuesta, ctx) {
 
 // --- Evaluación ----------------------------------------------------------------------
 
+const sinTildes = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+/**
+ * Cobertura por barrio (docs/cobertura.md): con la ciudad atendida y el barrio
+ * dado, resolverBarrio dice si se atiende. El resultado entra al evaluador
+ * como el dato derivado `zona_barrio`; no se guarda en los datos del contacto.
+ * Un barrio que no se reconoce no descarta a nadie: queda como advertencia.
+ */
+function zonaBarrio(ctx, resolverBarrio) {
+  const datos = ctx.contacto.datos || {};
+  const barrios = ctx.barrios_cobertura;
+  if (!resolverBarrio || !Array.isArray(barrios) || !barrios.length || !datos.barrio) return { zona: null, eventos: [] };
+  const ciudades = (((ctx.tenant.parametros || {}).cobertura || {}).ciudades || []).map(sinTildes);
+  if (!ciudades.includes(sinTildes(datos.ciudad))) return { zona: null, eventos: [] };
+  const r = resolverBarrio(datos.barrio, barrios);
+  const eventos = ['desconocido', 'ambiguo', 'sin_definir'].includes(r.estado)
+    ? [evento('advertencia', null, 'cobertura_barrio', `Barrio ${r.estado.replace('_', ' ')}: "${datos.barrio}"`, { candidatos: r.candidatos })]
+    : [];
+  return { zona: r.estado, eventos };
+}
+
 /** Ejecuta el evaluador determinista con la configuración del rol. */
-function evaluarTurno(ctx, evaluarCalificacion) {
+function evaluarTurno(ctx, evaluarCalificacion, resolverBarrio) {
   try {
+    const zona = zonaBarrio(ctx, resolverBarrio);
     const evaluacion = evaluarCalificacion({
       criterios: ctx.rol.criterios,
       requiereVerificacionDireccion: ctx.rol.requiere_verificacion_direccion,
-      datos: ctx.contacto.datos,
+      datos: zona.zona ? { ...ctx.contacto.datos, zona_barrio: zona.zona } : ctx.contacto.datos,
       verificacionDireccion: ctx.verificacion,
       parametros: ctx.tenant.parametros || {},
     });
@@ -308,7 +354,7 @@ function evaluarTurno(ctx, evaluarCalificacion) {
     if (evaluacion.accion === 'ofrecer_agenda' && pidePropuesta(ctx) && (ctx.contacto.datos || {}).desea_continuar !== true) {
       evaluacion.accion = 'presentar_propuesta';
     }
-    return { evaluacion, eventos: [] };
+    return { evaluacion, eventos: zona.eventos };
   } catch (e) {
     // Configuración inválida: no se califica ni se descarta a nadie.
     return {
@@ -383,9 +429,17 @@ function planPropuesta(ctx, ev, fija) {
   const pct = comercial.propuesta && comercial.propuesta.comision_pct;
   if (typeof pct !== 'number') return null;
   const nombre = nombreParaDirigirse(ctx);
-  const plan = fija('propuesta', [], { nombre, comision_pct: String(pct).replace('.', ',') });
-  if (!nombre) plan.respuesta_fija.texto = plan.respuesta_fija.texto.replace(/,\s*\{\{nombre\}\}/, '');
-  const yaEnviada = mensajesDelCaso(ctx).some((m) => m.direccion === 'saliente' && m.contenido === plan.respuesta_fija.texto);
+  // Con el video del proceso (parametros.comercial.propuesta.video_url), la propuesta lo incluye.
+  const video = comercial.propuesta.video_url;
+  const clave = video && /^https:\/\//.test(video) && p.propuesta_video ? 'propuesta_video' : 'propuesta';
+  const plan = fija(clave, [], { nombre, comision_pct: String(pct).replace('.', ','), video_url: video });
+  if (!nombre) {
+    const sinNombre = (t) => t.replace(/,\s*\{\{nombre\}\}/, '');
+    plan.respuesta_fija.texto = sinNombre(plan.respuesta_fija.texto);
+    plan.respuesta_fija.guia = sinNombre(plan.respuesta_fija.guia);
+  }
+  const yaEnviada = mensajesDelCaso(ctx).some((m) => m.direccion === 'saliente'
+    && (['propuesta', 'propuesta_video'].includes(m.plantilla) || m.contenido === plan.respuesta_fija.texto));
   return yaEnviada ? null : plan;
 }
 
@@ -400,7 +454,13 @@ function mensajesDelCaso(ctx) {
 
 function ultimoMensajeDelAgente(ctx) {
   const salientes = (ctx.historial || []).filter((m) => m.direccion === 'saliente');
-  return salientes.length ? salientes[salientes.length - 1].contenido : null;
+  return salientes.length ? salientes[salientes.length - 1] : null;
+}
+
+/** ¿El último mensaje del agente fue esta plantilla? Redactada con otras palabras, se reconoce por su clave. */
+function ultimoFuePlantilla(ctx, clave) {
+  const m = ultimoMensajeDelAgente(ctx);
+  return Boolean(m && (m.plantilla === clave || m.contenido === (ctx.plantillas || {})[clave]));
 }
 
 function nutreNoCalificados(ctx) {
@@ -465,11 +525,27 @@ function instruccionPermiso(ctx) {
   return null;
 }
 
-const fueraDeCobertura = (ev) => String(ev.codigo_motivo || '').split(',').includes('cobertura_ciudad');
+// Motivos de no calificación que se ofrecen como referencia a un colega, con su
+// plantilla, en orden de prioridad: ciudad, barrio (19 oct) y valor (< 450 M, 26 oct).
+const REFERENCIA_POR_MOTIVO = [
+  ['cobertura_ciudad', 'fuera_cobertura'],
+  ['cobertura_barrio', 'fuera_cobertura_barrio'],
+  ['valor_minimo', 'referencia_valor'],
+];
+const motivos = (ev) => String(ev.codigo_motivo || '').split(',');
+/** Primer motivo referible de la evaluación ([motivo, plantilla]) o null. */
+const motivoReferencia = (ev) => REFERENCIA_POR_MOTIVO.find(([m]) => motivos(ev).includes(m)) || null;
+const fueraDeCobertura = (ev) => Boolean(motivoReferencia(ev));
 // Lucía solo atiende ventas (reunión del 19 oct 2026): quien solo quiere arrendar no sigue.
 const soloArriendo = (ev) => String(ev.codigo_motivo || '').split(',').includes('solo_venta');
 
-function instruccionReferencia(ctx) {
+const RAZON_REFERENCIA = {
+  cobertura_ciudad: (v) => `La propiedad está fuera de la cobertura directa (${v.ciudades_cobertura}).`,
+  cobertura_barrio: (v) => `El barrio de la propiedad no es una de las zonas que ${v.asesor} atiende directamente.`,
+  valor_minimo: (v) => `${v.asesor} concentra su trabajo directo en propiedades desde ${v.valor_minimo}; esta tiene un valor menor. No digas cifras ni opines sobre el valor.`,
+};
+
+function instruccionReferencia(ctx, ev = ctx.evaluacion || {}) {
   const datos = ctx.contacto.datos || {};
   const cierre = 'Pregunta si necesita alguna aclaración. No ofrezcas una llamada con el asesor, no digas que hay un agente disponible ni que alguien la contactará.';
   if (datos.autoriza_referencia === true) {
@@ -478,7 +554,8 @@ function instruccionReferencia(ctx) {
   if (datos.autoriza_referencia === false) {
     return `La persona no autorizó compartir sus datos: respétalo y confírmale que no se compartirán. ${cierre}`;
   }
-  return `La propiedad está fuera de la cobertura directa (${valoresPrompt(ctx).ciudades_cobertura}). Responde con cordialidad a lo que diga y pregúntale si autoriza compartir sus datos de contacto y la información de la propiedad para gestionar una posible referencia con un colega de la zona. ${cierre}`;
+  const razon = RAZON_REFERENCIA[(motivoReferencia(ev) || ['cobertura_ciudad'])[0]](valoresPrompt(ctx));
+  return `${razon} Responde con cordialidad a lo que diga y pregúntale si autoriza compartir sus datos de contacto y la información de la propiedad para gestionar una posible referencia con un colega de la zona. ${cierre}`;
 }
 
 function instruccionPropuesta(ctx) {
@@ -508,25 +585,44 @@ function preguntaDeCampo(ctx, clave) {
   return campo && campo.pregunta ? campo.pregunta : null;
 }
 
+/**
+ * Campo que se pide en este turno, o null (aún se pide permiso). El sistema lo
+ * elige para poder acompañar la pregunta con sus botones (campos con `menu`).
+ */
+function campoSiguiente(ctx, ev) {
+  if (ev.accion !== 'solicitar_datos' || ctx.retorno || instruccionPermiso(ctx)) return null;
+  return (ev.campos_faltantes || [])[0] || null;
+}
+
+/** Opciones del campo que se pide (roles_agente.campos[].menu): botones en WhatsApp, lista con emojis en Instagram. */
+function opcionesDeCampo(ctx, ev) {
+  const campo = (ctx.rol.campos || []).find((c) => c.clave === campoSiguiente(ctx, ev));
+  return campo && Array.isArray(campo.menu) && campo.menu.length >= 2
+    ? { tipo: 'campo', titulos: campo.menu.map((m) => m.titulo) }
+    : null;
+}
+
 function instruccionSiguientePaso(ctx, ev) {
   const etiquetas = new Map(ctx.rol.campos.map((c) => [c.clave, c.etiqueta]));
   switch (ev.accion) {
     case 'solicitar_datos': {
       const permiso = instruccionPermiso(ctx);
       if (permiso) return permiso;
-      const siguiente = (ev.campos_faltantes || [])[0];
+      const siguiente = campoSiguiente(ctx, ev);
       if (siguiente === 'nombre' && (ctx.contacto.datos || {}).nombre) {
-        return 'Pide su nombre completo con esta frase: "¿Me puedes facilitar tu nombre completo, por favor?"';
+        return 'Pide su nombre completo con una frase cordial de este sentido: "¿Me puedes facilitar tu nombre completo, por favor?"';
       }
       const pregunta = preguntaDeCampo(ctx, siguiente);
+      const opciones = opcionesDeCampo(ctx, ev);
       return [
         pregunta
-          ? `Pide solo el siguiente dato (${etiquetas.get(siguiente) || siguiente}) con esta pregunta: "${pregunta}"`
+          ? `Pide solo el siguiente dato (${etiquetas.get(siguiente) || siguiente}) con una pregunta de este sentido; puedes variar las palabras: "${pregunta}"`
           : siguiente
             ? `Pide solo el siguiente dato: ${etiquetas.get(siguiente) || siguiente}.`
             : 'Pide la información que falte para continuar.',
+        opciones ? `El sistema agrega estas opciones debajo de tu mensaje: ${opciones.titulos.join(' / ')}. No las enumeres en el texto.` : null,
         FALTAN_DATOS,
-      ].join(' ');
+      ].filter(Boolean).join(' ');
     }
     case 'presentar_propuesta':
       return instruccionPropuesta(ctx);
@@ -545,7 +641,7 @@ function instruccionSiguientePaso(ctx, ev) {
     case 'ofrecer_agenda':
       return instruccionAgenda(ctx);
     case 'archivar':
-      if (fueraDeCobertura(ev)) return instruccionReferencia(ctx);
+      if (fueraDeCobertura(ev)) return instruccionReferencia(ctx, ev);
       return 'Ya se le informó a la persona que su caso no cumple las condiciones para continuar. Responde con cordialidad y brevedad a lo que diga. No expliques los criterios internos, no pidas más datos ni reabras la calificación.';
     case 'nutrir':
       return 'La persona cumple los criterios pero no tiene prisa; ya se le informó que quedó registrada. Responde con cordialidad y brevedad a lo que diga. No ofrezcas ni agendes citas ni horarios. Si dice que ahora sí quiere avanzar pronto, pregúntale en cuánto tiempo quiere concretar.';
@@ -643,6 +739,75 @@ function solicitudRedaccion(ctx) {
   };
 }
 
+// --- Redacción guiada (26 oct 2026) ----------------------------------------------------
+
+// Datos que el LLM no escribe: viajan como marcadores {{clave}} y los rellena el código.
+const DATOS_EXACTOS = new Set([
+  'horarios_disponibles', 'horarios_alternativos', 'fecha', 'hora', 'zona_horaria', 'dia',
+  'modalidad', 'comision_pct', 'enlace_agenda', 'video_url',
+]);
+
+/** Valores de los datos exactos (true) o de los demás (false); sin nulos. */
+function soloDatos(valores, exactos) {
+  return Object.fromEntries(Object.entries(valores)
+    .filter(([k, v]) => DATOS_EXACTOS.has(k) === exactos && v !== undefined && v !== null));
+}
+
+const marcadores = (t) => (String(t).match(/\{\{\w+\}\}/g) || []);
+const contar = (lista) => lista.reduce((m, x) => m.set(x, (m.get(x) || 0) + 1), new Map());
+const numerosDe = (t) => new Set(String(t).replace(/\{\{\w+\}\}/g, ' ').match(/\d+/g) || []);
+
+/** Plantillas aprobadas por Meta (app.plantillas.requiere_aprobacion_meta): van literales. */
+function esLiteral(ctx, clave) {
+  return (ctx.plantillas_literales || []).includes(clave);
+}
+
+/**
+ * Convierte la plantilla elegida por planificarRespuesta en una solicitud de
+ * redacción: el LLM transmite la guía con sus palabras. Las plantillas de Meta
+ * y las respuestas sin plantilla se devuelven sin cambios. Si la redacción
+ * falla o no respeta los marcadores, interpretarRedaccion envía el texto literal.
+ */
+function guiarRespuesta(ctx, plan) {
+  const rf = plan && plan.respuesta_fija;
+  if (!rf || !rf.plantilla || !rf.guia || esLiteral(ctx, rf.plantilla)) return plan;
+  return { ...plan, respuesta_fija: null, solicitud_llm: solicitudGuia(ctx, rf), guia: rf };
+}
+
+function solicitudGuia(ctx, rf) {
+  const v = valoresPrompt(ctx);
+  const sistema = ctx.rol
+    ? rellenar(ctx.rol.prompt_sistema, v)
+    : `Eres la asistente virtual de ${representado(ctx)} y atiendes por ${v.canal}. Escribes en español neutro, cordial y breve, tuteas, sin emojis. Nunca afirmas ser una persona.`;
+  const nombre = nombreParaDirigirse(ctx);
+  const instrucciones = [
+    '## Mensaje que envías ahora (lo eligió el sistema)',
+    `Guía: "${rf.guia}"`,
+    '- Transmite exactamente ese sentido con tus propias palabras, adaptadas a la conversación. No copies la guía literal.',
+    '- No quites ni agregues información, condiciones, promesas, cifras ni preguntas. Si la guía termina en una pregunta, termina con una pregunta equivalente.',
+    marcadores(rf.guia).length
+      ? `- Escribe cada marcador (${[...new Set(marcadores(rf.guia))].join(', ')}) tal cual, una vez y en el lugar que tenga sentido: el sistema lo reemplaza por el dato exacto. No escribas tú esos datos.`
+      : null,
+    nombre ? `- Si te diriges a la persona, llámala "${nombre}".` : null,
+    'Responde solo con el texto del mensaje, sin comillas ni explicaciones.',
+  ].filter(Boolean).join('\n');
+  return {
+    model: modelo(ctx),
+    temperature: 0.6,
+    messages: [{ role: 'system', content: `${sistema}\n\n${instrucciones}` }, ...mensajesHistorial(ctx)],
+  };
+}
+
+/** Texto redactado con la guía, o null si no conserva los marcadores o trae cifras nuevas. */
+function textoGuiado(redactado, guia) {
+  const esperados = contar(marcadores(guia.guia));
+  const usados = contar(marcadores(redactado));
+  if (esperados.size !== usados.size || [...esperados].some(([k, n]) => usados.get(k) !== n)) return null;
+  const permitidos = numerosDe(guia.guia);
+  if ([...numerosDe(redactado)].some((n) => !permitidos.has(n))) return null;
+  return rellenar(redactado, guia.datos || {});
+}
+
 /**
  * Decide la respuesta del turno.
  * @returns {{ respuesta_fija: {texto, plantilla} | null, solicitud_llm: object | null, eventos: object[] }}
@@ -650,7 +815,12 @@ function solicitudRedaccion(ctx) {
 function planificarRespuesta(ctx) {
   const p = ctx.plantillas || {};
   const comunes = ctx.rol || ctx.tenant ? { asesor: valoresPrompt(ctx).asesor, ciudades_cobertura: valoresPrompt(ctx).ciudades_cobertura } : {};
-  const fija = (clave, eventos = [], valores = {}) => ({ respuesta_fija: { texto: rellenar(p[clave], { ...comunes, ...valores }), plantilla: clave }, solicitud_llm: null, eventos });
+  // `guia` es la plantilla con los datos exactos aún como marcadores; `texto`, el mensaje literal.
+  const fija = (clave, eventos = [], valores = {}) => {
+    const todos = { ...comunes, ...valores };
+    const guia = rellenar(p[clave], soloDatos(todos, false));
+    return { respuesta_fija: { texto: rellenar(guia, todos), plantilla: clave, guia, datos: soloDatos(todos, true) }, solicitud_llm: null, eventos };
+  };
 
   if (!ctx.rol) {
     if (p.seleccion_intencion) return fija('seleccion_intencion');
@@ -664,10 +834,15 @@ function planificarRespuesta(ctx) {
   }
 
   const ra = ctx.resultado_agenda;
-  const claveAgenda = ra && PLANTILLA_POR_RESULTADO_AGENDA[ra.tipo];
+  let claveAgenda = ra && PLANTILLA_POR_RESULTADO_AGENDA[ra.tipo];
+  // Prioridad B (agendar a futuro): los primeros horarios se ofrecen con su plantilla.
+  if (claveAgenda === 'calificado' && (ctx.evaluacion || {}).agendar_desde_dias !== undefined && p.calificado_futuro) claveAgenda = 'calificado_futuro';
   if (claveAgenda && p[claveAgenda]) {
     const encuentro = encuentroDe(ctx, ra.modalidad);
-    return fija(claveAgenda, [], {
+    // Horarios numerados: en WhatsApp también como lista para tocar; en Instagram, con emojis.
+    const lineas = String(ra.texto || '').split('\n').filter((l) => /^\d+\.\s/.test(l));
+    const conOpciones = (plan) => (lineas.length ? { ...plan, opciones: { tipo: 'horarios', titulos: lineas.map((l) => l.replace(/^\d+\.\s*/, '')) } } : plan);
+    return conOpciones(fija(claveAgenda, [], {
       encuentro: encuentro.nombre,
       quien_contacta: encuentro.quien_contacta,
       horarios_disponibles: ra.texto,
@@ -677,7 +852,7 @@ function planificarRespuesta(ctx) {
       hora: ra.hora,
       zona_horaria: ra.zona_texto || ra.zona_horaria,
       modalidad: ra.modalidad,
-    });
+    }));
   }
 
   const ev = ctx.evaluacion || {};
@@ -686,17 +861,20 @@ function planificarRespuesta(ctx) {
   const clave = PLANTILLA_POR_ACCION[ev.accion];
   const yaInformado = (ESTADO_YA_INFORMADO[ev.accion] && ctx.estado_anterior === ESTADO_YA_INFORMADO[ev.accion])
     // La dirección imprecisa se avisa con la plantilla una vez; después, aclaración redactada.
-    || (ev.accion === 'aclarar_direccion' && ultimoMensajeDelAgente(ctx) === p[clave]);
+    || (ev.accion === 'aclarar_direccion' && ultimoFuePlantilla(ctx, clave));
   if (clave && p[clave] && !yaInformado) {
     // No calificados: si el tenant los nutre, mensaje cordial + dossier en vez de solo "no cumples".
-    if (ev.accion === 'archivar' && fueraDeCobertura(ev) && p.fuera_cobertura) return fija('fuera_cobertura');
+    const referencia = ev.accion === 'archivar' && motivoReferencia(ev);
+    if (referencia && p[referencia[1]]) return fija(referencia[1]);
+    if (referencia && p.fuera_cobertura) return fija('fuera_cobertura');
     if (ev.accion === 'archivar' && soloArriendo(ev) && p.solo_venta) return fija('solo_venta');
     const nutrirNoCalificado = ev.accion === 'archivar' && nutreNoCalificados(ctx) && p.no_calificado_nutricion;
     const plan = fija(nutrirNoCalificado ? 'no_calificado_nutricion' : clave);
     if ((ev.accion === 'nutrir' || nutrirNoCalificado) && dossier(ctx)) plan.respuesta_fija.documento = dossier(ctx);
     return plan;
   }
-  return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [] };
+  const opciones = opcionesDeCampo(ctx, ev);
+  return { respuesta_fija: null, solicitud_llm: solicitudRedaccion(ctx), eventos: [], ...(opciones ? { opciones } : {}) };
 }
 
 // "10:00 a. m.", "3 p. m.", "15:30": horas en un mensaje.
@@ -718,8 +896,22 @@ function reemplazoSinHorarios(ctx, texto) {
   return campo ? `Para continuar, ¿me indicas ${campo.etiqueta.toLowerCase()}?` : RESPUESTA_SEGURA;
 }
 
-function interpretarRedaccion(respuesta, ctx) {
+function interpretarRedaccion(respuesta, ctx, plan) {
   const r = contenidoOpenAI(respuesta);
+  const guia = plan && plan.guia;
+  if (guia) {
+    const extra = { plantilla: guia.plantilla, ...(guia.documento ? { documento: guia.documento } : {}), ...(plan.opciones ? { opciones: plan.opciones } : {}) };
+    const texto = r.error ? null : textoGuiado(r.contenido.replace(/^"(.*)"$/s, '$1'), guia);
+    if (texto) return { texto, ...extra, eventos: [] };
+    // La guía es un texto aprobado: ante una falla o una redacción que no la respeta, se envía literal.
+    return {
+      texto: guia.texto,
+      ...extra,
+      eventos: [r.error
+        ? evento('error', 'openai', 'redactar_guia', r.error)
+        : evento('advertencia', 'openai', 'redactar_guia', 'La redacción no conservó los datos de la plantilla; se envió el texto literal', { texto_descartado: r.contenido })],
+    };
+  }
   if (r.error) {
     return { texto: RESPUESTA_SEGURA, plantilla: null, eventos: [evento('error', 'openai', 'redactar_respuesta', r.error)] };
   }
@@ -732,7 +924,7 @@ function interpretarRedaccion(respuesta, ctx) {
       eventos: [evento('advertencia', 'openai', 'redactar_respuesta', 'La redacción ofrecía horarios que el sistema no dio; se reemplazó por la pregunta pendiente', { texto_descartado: texto })],
     };
   }
-  return { texto, plantilla: null, eventos: [] };
+  return { texto, plantilla: null, ...(plan && plan.opciones ? { opciones: plan.opciones } : {}), eventos: [] };
 }
 
 module.exports = {
@@ -746,5 +938,6 @@ module.exports = {
   interpretarExtraccion,
   evaluarTurno,
   planificarRespuesta,
+  guiarRespuesta,
   interpretarRedaccion,
 };

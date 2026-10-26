@@ -315,7 +315,7 @@ test('flujo: el nodo de evaluación usa el evaluador incrustado', async () => {
   const ctx = ctxBase({
     contacto: { id: 'c1', estado: 'en_calificacion', datos: {
       nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
-      tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
+      tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', estado_ocupacion: 'desocupado', publicado_en_mercado: 'no', otros_decisores: 'nadie más', intencion_venta: true, plazo_meses: 12 } },
     verificacion: { resultado: 'verificada' },
   });
   ctx.tenant.parametros = parametros;
@@ -472,7 +472,7 @@ test('objeciones: asesor y argumento de exclusividad salen de los parámetros', 
   });
   const sistema = conv.planificarRespuesta(ctx).solicitud_llm.messages[0].content;
   assert.match(sistema, /Lo demás lo revisa Javier/);
-  assert.match(sistema, /en exclusiva con Javier/);
+  assert.match(sistema, /con exclusividad la promoción es más concentrada/);
   assert.doesNotMatch(sistema, /comisión del 5 %/, 'la comisión de venta no va en las reglas comunes (Sonia atiende compradores)');
   const lucia = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'prompts', 'lucia.md'), 'utf8');
   const sistemaLucia = conv.planificarRespuesta({ ...ctx, rol: { ...ctx.rol, prompt_sistema: `${prompt}\n\n${lucia.replace('{{campos}}', '- datos')}` } }).solicitud_llm.messages[0].content;
@@ -592,13 +592,15 @@ test('otra propiedad en la misma reunión: no ofrece horarios, deja nota y lo co
   assert.match(prompt, /no los mezcles con lo hablado antes/);
 });
 
-test('otra propiedad en la misma reunión con prioridad baja: no se nutre', () => {
+test('otra propiedad en la misma reunión con prioridad baja: va a esa reunión', () => {
   const ctx = ctxBase({
-    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, tipo_inmueble: 'casa', ciudad: 'Bogotá', barrio: 'Usaquén', direccion: 'Cl 1 # 2-3', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 12 } },
+    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, tipo_inmueble: 'casa', ciudad: 'Bogotá', barrio: 'Usaquén', direccion: 'Cl 1 # 2-3', relacion_inmueble: 'propietario', estado_ocupacion: 'desocupado', publicado_en_mercado: 'no', otros_decisores: 'nadie más', intencion_venta: true, plazo_meses: 12 } },
     verificacion: { resultado: 'verificada' },
     tenant: { ...ctxBase().tenant, parametros: require('../config/tenants/javier-nunez/tenant.json').parametros },
   });
-  assert.equal(conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion.accion, 'nutrir');
+  const sola = conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion;
+  assert.equal(sola.prioridad, 'baja');
+  assert.equal(sola.agendar_desde_dias, 14, 'prioridad B: se agenda a futuro');
   const compartida = conv.evaluarTurno({ ...ctx, oportunidad: { cita_compartida: { inicio: '2030-01-01T13:00:00Z' } } }, evaluarCalificacion);
   assert.equal(compartida.evaluacion.accion, 'ofrecer_agenda');
 });
@@ -640,7 +642,7 @@ test('Lucía: si no tiene tiempo, se respeta y no pregunta', () => {
 
 test('Lucía: con solo el primer nombre pide el nombre completo y no califica', () => {
   const datos = { nombre: 'Rafael', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
-    tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
+    tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', estado_ocupacion: 'desocupado', publicado_en_mercado: 'no', otros_decisores: 'nadie más', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
   const ctx = ctxLucia({ contacto: { ...ctxBase().contacto, datos }, verificacion: { resultado: 'verificada' } });
   const ev = conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion;
   assert.equal(ev.resultado, 'informacion_incompleta');
@@ -650,7 +652,7 @@ test('Lucía: con solo el primer nombre pide el nombre completo y no califica', 
 
 test('Lucía: antes de agendar presenta la propuesta y espera que quiera continuar', () => {
   const datos = { nombre: 'Rafael Rivas', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
-    tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
+    tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', estado_ocupacion: 'desocupado', publicado_en_mercado: 'no', otros_decisores: 'nadie más', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
   const ctx = ctxLucia({ contacto: { ...ctxBase().contacto, datos }, verificacion: { resultado: 'verificada' } });
   const ev = conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion;
   assert.equal(ev.resultado, 'calificado');
@@ -677,7 +679,8 @@ test('Lucía: fuera de cobertura pide autorización para una posible referencia,
   });
   const plan = conv.planificarRespuesta(ctx);
   assert.equal(plan.respuesta_fija.plantilla, 'fuera_cobertura');
-  assert.match(plan.respuesta_fija.texto, /Javier atiende directamente propiedades en Bogotá\. .*¿Nos autorizas a compartir/);
+  assert.match(plan.respuesta_fija.texto, /Javier atiende directamente propiedades en Bogotá.*¿Nos autorizas a compartir/);
+  assert.doesNotMatch(plan.respuesta_fija.texto, /se comunicará|te contactará|te llamará/, 'no promete contacto');
 
   const despues = (autoriza) => sistemaDe(conv.planificarRespuesta({
     ...ctx, estado_anterior: 'no_calificado', contacto: { ...ctx.contacto, estado: 'no_calificado', datos: { autoriza_referencia: autoriza } },
@@ -811,7 +814,7 @@ test('dirección imprecisa: la plantilla una vez; luego aclaración con la suger
 test('propuesta: texto fijo aprobado la primera vez; después el agente responde dudas', () => {
   const plantilla = require('../config/tenants/javier-nunez/plantillas.json').find((p) => p.clave === 'propuesta').texto;
   const datos = { nombre: 'Rafael Rivas', telefono: '+573001112233', operacion: 'venta', valor_estimado_cop: 450000000, ciudad: 'Bogotá', barrio: 'Chapinero', direccion: 'Cl 63 # 9-15',
-    tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
+    tipo_inmueble: 'apartamento', relacion_inmueble: 'propietario', estado_ocupacion: 'desocupado', publicado_en_mercado: 'no', otros_decisores: 'nadie más', intencion_venta: true, plazo_meses: 2, acepta_preguntas: true };
   const base = ctxLucia({ contacto: { ...ctxBase().contacto, datos }, verificacion: { resultado: 'verificada' }, plantillas: { ...ctxBase().plantillas, propuesta: plantilla } });
   const ev = conv.evaluarTurno(base, evaluarCalificacion).evaluacion;
   const plan = conv.planificarRespuesta({ ...base, evaluacion: ev });
@@ -975,13 +978,13 @@ test('barrios: el nodo Code prepara las 447 filas de la hoja de hoy', async () =
 
 // --- Prueba del 21 oct: faltaba intencion_venta y el LLM ofreció horarios inventados ---------
 
-test('faltan datos: pregunta fija del campo y prohibición de adelantar la agenda', () => {
+test('faltan datos: pregunta guía del campo (palabras libres) y prohibición de adelantar la agenda', () => {
   const ctx = ctxBase({
     contacto: { ...ctxBase().contacto, datos: { acepta_preguntas: true, operacion: 'venta' } },
     evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['intencion_venta'] },
   });
   const sistema = conv.planificarRespuesta(ctx).solicitud_llm.messages[0].content;
-  assert.match(sistema, /con esta pregunta: "Para confirmar: ¿tu intención es vender el inmueble, o por ahora solo estás evaluando hacerlo\?"/);
+  assert.match(sistema, /con una pregunta de este sentido; puedes variar las palabras: "Para confirmar: ¿tu intención es vender el inmueble, o por ahora solo estás evaluando hacerlo\?"/);
   assert.match(sistema, /no digas que ya tienes toda la información, no hables de agendar ni ofrezcas días u horarios/);
 });
 
@@ -1017,4 +1020,187 @@ test('solo venta: quien solo quiere arrendar recibe la plantilla solo_venta (19 
     evaluacion: { resultado: 'no_calificado', accion: 'archivar', codigo_motivo: 'solo_venta', campos_faltantes: [] },
   });
   assert.equal(conv.planificarRespuesta(ctx).respuesta_fija.plantilla, 'solo_venta');
+});
+
+// --- Redacción guiada, menús y guion de Lucía (26 oct 2026) --------------------------------
+
+const PLANTILLAS = require('../config/tenants/javier-nunez/plantillas.json');
+const plantillasDe = (rol) => Object.fromEntries(PLANTILLAS
+  .filter((p) => p.rol === null || p.rol === rol)
+  .sort((a, b) => (a.rol === null) - (b.rol === null))
+  .reverse()
+  .map((p) => [p.clave, p.texto]));
+
+test('redacción guiada: la plantilla elegida pasa al LLM con los datos exactos como marcadores', () => {
+  const ctx = ctxLucia({
+    plantillas: plantillasDe('lucia'),
+    resultado_agenda: { tipo: 'ofrecidos', texto: '1. Martes 28 de octubre, 10:00 a. m.\n2. Miércoles 29 de octubre, 3:00 p. m.' },
+  });
+  const plan = conv.guiarRespuesta(ctx, conv.planificarRespuesta(ctx));
+  assert.equal(plan.respuesta_fija, null, 'va al LLM');
+  assert.equal(plan.guia.plantilla, 'calificado');
+  assert.match(plan.guia.guia, /llamada con Javier.*\{\{horarios_disponibles\}\}/s, 'el asesor ya está, los horarios como marcador');
+  assert.match(plan.guia.texto, /1\. Martes 28 de octubre/, 'texto literal de respaldo');
+  assert.match(sistemaDe(plan), /con tus propias palabras/);
+  assert.match(sistemaDe(plan), /\{\{horarios_disponibles\}\}/);
+  assert.deepEqual(plan.opciones, { tipo: 'horarios', titulos: ['Martes 28 de octubre, 10:00 a. m.', 'Miércoles 29 de octubre, 3:00 p. m.'] });
+
+  const redactada = conv.interpretarRedaccion(openaiOk('¡Qué bien! Tu propiedad es justo lo que trabajamos. Te propongo una llamada con Javier sin compromiso; ¿qué horario te sirve? (hora de Colombia)\n{{horarios_disponibles}}'), ctx, plan);
+  assert.match(redactada.texto, /^¡Qué bien!.*\n1\. Martes 28 de octubre, 10:00 a\. m\.\n2\. Miércoles/s, 'el código rellena los horarios');
+  assert.equal(redactada.plantilla, 'calificado');
+  assert.deepEqual(redactada.opciones, plan.opciones);
+  assert.deepEqual(redactada.eventos, []);
+});
+
+test('redacción guiada: sin marcadores, con cifras nuevas o con falla del LLM se envía el texto literal', () => {
+  const ctx = ctxLucia({ plantillas: plantillasDe('lucia'), resultado_agenda: { tipo: 'ofrecidos', texto: '1. Martes 28 de octubre, 10:00 a. m.' } });
+  const plan = conv.guiarRespuesta(ctx, conv.planificarRespuesta(ctx));
+  for (const malo of [
+    'Te propongo el martes 28 a las 10:00 a. m.',
+    'Hola. {{horarios_disponibles}} {{horarios_disponibles}}',
+    'En 15 minutos te escribo. {{horarios_disponibles}}',
+  ]) {
+    const r = conv.interpretarRedaccion(openaiOk(malo), ctx, plan);
+    assert.equal(r.texto, plan.guia.texto, malo);
+    assert.equal(r.eventos[0].nivel, 'advertencia');
+  }
+  const caida = conv.interpretarRedaccion({ error: { message: 'timeout' } }, ctx, plan);
+  assert.equal(caida.texto, plan.guia.texto, 'una plantilla aprobada es mejor respaldo que la respuesta segura');
+  assert.equal(caida.eventos[0].nivel, 'error');
+});
+
+test('redacción guiada: las plantillas de Meta y las respuestas sin plantilla no cambian', () => {
+  const ctx = ctxLucia({ plantillas: plantillasDe('lucia'), resultado_agenda: { tipo: 'ofrecidos', texto: '1. Martes' }, plantillas_literales: ['calificado'] });
+  const fija = conv.planificarRespuesta(ctx);
+  assert.equal(conv.guiarRespuesta(ctx, fija), fija);
+  const libre = conv.planificarRespuesta(ctxLucia({ evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['ciudad'] } }));
+  assert.equal(conv.guiarRespuesta(ctx, libre), libre);
+});
+
+test('redacción guiada: sin rol, la selección de intención también se redacta', () => {
+  const ctx = ctxBase({ rol: null, tenant: { ...ctxBase().tenant, parametros: PARAMS }, plantillas: plantillasDe(null) });
+  const plan = conv.guiarRespuesta(ctx, conv.planificarRespuesta(ctx));
+  assert.equal(plan.guia.plantilla, 'seleccion_intencion');
+  assert.match(sistemaDe(plan), /asistente virtual de Javier Núñez del Toro/);
+});
+
+test('propuesta enviada con otras palabras: se reconoce por la plantilla y no se repite', () => {
+  const ctx = ctxLucia({
+    plantillas: plantillasDe('lucia'),
+    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana Gómez' } },
+    evaluacion: { resultado: 'calificado', accion: 'presentar_propuesta' },
+  });
+  assert.equal(conv.planificarRespuesta(ctx).respuesta_fija.plantilla, 'propuesta');
+  const enviada = { ...ctx, historial: [...ctx.historial, { direccion: 'saliente', contenido: 'Javier trabaja en exclusiva…', plantilla: 'propuesta' }] };
+  assert.equal(conv.planificarRespuesta(enviada).respuesta_fija, null);
+});
+
+test('propuesta con video: con video_url se usa propuesta_video y el enlace es un dato exacto', () => {
+  const params = { ...PARAMS, comercial: { ...PARAMS.comercial, propuesta: { ...PARAMS.comercial.propuesta, video_url: 'https://x.co/proceso' } } };
+  const ctx = ctxLucia({
+    tenant: { ...ctxBase().tenant, parametros: params },
+    plantillas: plantillasDe('lucia'),
+    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana Gómez' } },
+    evaluacion: { resultado: 'calificado', accion: 'presentar_propuesta' },
+  });
+  const rf = conv.planificarRespuesta(ctx).respuesta_fija;
+  assert.equal(rf.plantilla, 'propuesta_video');
+  assert.match(rf.texto, /https:\/\/x\.co\/proceso/);
+  assert.match(rf.guia, /\{\{video_url\}\}/);
+  assert.equal(meta.solicitudEnvio(ctx, rf.texto).cuerpo.text.preview_url, true, 'vista previa del enlace');
+});
+
+test('referencia por valor (< 450 M) y por barrio: plantilla e instrucción propias', () => {
+  const valor = ctxLucia({ plantillas: plantillasDe('lucia'), evaluacion: { resultado: 'no_calificado', accion: 'archivar', codigo_motivo: 'valor_minimo' }, estado_anterior: 'informacion_incompleta' });
+  assert.equal(conv.planificarRespuesta(valor).respuesta_fija.plantilla, 'referencia_valor');
+  const barrio = { ...valor, evaluacion: { ...valor.evaluacion, codigo_motivo: 'cobertura_barrio' } };
+  assert.equal(conv.planificarRespuesta(barrio).respuesta_fija.plantilla, 'fuera_cobertura_barrio');
+  const ciudadYValor = { ...valor, evaluacion: { ...valor.evaluacion, codigo_motivo: 'cobertura_ciudad,valor_minimo' } };
+  assert.equal(conv.planificarRespuesta(ciudadYValor).respuesta_fija.plantilla, 'fuera_cobertura', 'la ciudad va primero');
+
+  const despues = (ev) => sistemaDe(conv.planificarRespuesta({ ...valor, evaluacion: { ...valor.evaluacion, codigo_motivo: ev }, estado_anterior: 'no_calificado', contacto: { ...valor.contacto, estado: 'no_calificado' } }));
+  assert.match(despues('valor_minimo'), /desde 450 millones de pesos.*No digas cifras/s);
+  assert.match(despues('cobertura_barrio'), /no es una de las zonas que Javier atiende/);
+  assert.match(despues('valor_minimo'), /no digas que hay un agente disponible/);
+  for (const clave of ['fuera_cobertura', 'fuera_cobertura_barrio', 'referencia_valor']) {
+    assert.doesNotMatch(PLANTILLAS.find((p) => p.clave === clave).texto, /se comunicará|te contactará|hoy mismo/, `${clave} no promete contacto`);
+  }
+});
+
+test('prioridad B: la primera oferta de horarios usa calificado_futuro', () => {
+  const ctx = ctxLucia({
+    plantillas: plantillasDe('lucia'),
+    evaluacion: { resultado: 'calificado', accion: 'ofrecer_agenda', prioridad: 'baja', agendar_desde_dias: 14 },
+    resultado_agenda: { tipo: 'ofrecidos', texto: '1. Lunes 9 de noviembre, 10:00 a. m.' },
+  });
+  assert.equal(conv.planificarRespuesta(ctx).respuesta_fija.plantilla, 'calificado_futuro');
+});
+
+test('cobertura por barrio: se resuelve con la hoja y un barrio desconocido solo deja advertencia', () => {
+  const { resolverBarrio } = require('../src/cobertura/barrios');
+  const barrios = [
+    { localidad: 'Chapinero', codigo_upz: 88, upz: 'El Refugio', barrio: 'El Nogal', alias: [], atiende: true },
+    { localidad: 'Bosa', codigo_upz: 85, upz: 'Bosa Central', barrio: 'Bosa Centro', alias: [], atiende: false },
+  ];
+  const datos = { nombre: 'Ana Gómez', telefono: '+573001112233', operacion: 'venta', ciudad: 'Bogotá', tipo_inmueble: 'apartamento' };
+  const turno = (barrio) => conv.evaluarTurno(ctxLucia({ barrios_cobertura: barrios, contacto: { ...ctxBase().contacto, datos: { ...datos, barrio } } }), evaluarCalificacion, resolverBarrio);
+  const fuera = turno('Bosa Centro');
+  assert.equal(fuera.evaluacion.resultado, 'no_calificado');
+  assert.equal(fuera.evaluacion.codigo_motivo, 'cobertura_barrio');
+  assert.equal(turno('El Nogal').evaluacion.resultado, 'informacion_incompleta', 'atendido: sigue la calificación');
+  const raro = turno('Barrio Inventado');
+  assert.equal(raro.evaluacion.resultado, 'informacion_incompleta', 'desconocido no descarta');
+  assert.equal(raro.eventos[0].operacion, 'cobertura_barrio');
+  // Sin barrios en el contexto (Sonia, o sin barrio aún) no cambia nada.
+  assert.deepEqual(conv.evaluarTurno(ctxLucia({ contacto: { ...ctxBase().contacto, datos: { ...datos, barrio: 'Bosa Centro' } } }), evaluarCalificacion, resolverBarrio).eventos, []);
+});
+
+test('menús: el campo siguiente con opciones las adjunta y avisa al LLM que no las enumere', () => {
+  const ctx = ctxLucia({
+    contacto: { ...ctxBase().contacto, datos: { acepta_preguntas: true } },
+    evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['estado_ocupacion', 'plazo_meses'] },
+  });
+  const plan = conv.planificarRespuesta(ctx);
+  assert.deepEqual(plan.opciones, { tipo: 'campo', titulos: ['Desocupado', 'Arrendado', 'Vivo allí'] });
+  assert.match(sistemaDe(plan), /No las enumeres en el texto/);
+  const sinMenu = conv.planificarRespuesta({ ...ctx, evaluacion: { accion: 'solicitar_datos', campos_faltantes: ['barrio'] } });
+  assert.equal(sinMenu.opciones, undefined);
+  const r = conv.interpretarRedaccion(openaiOk('Gracias. ¿Cómo está tu inmueble hoy?'), ctx, plan);
+  assert.deepEqual(r.opciones, plan.opciones);
+});
+
+test('menús en WhatsApp: botones hasta 3, lista para más; Instagram con emojis', () => {
+  const wa = ctxBase();
+  const botones = meta.solicitudEnvio(wa, '¿Cómo está tu inmueble?', null, { tipo: 'campo', titulos: ['Desocupado', 'Arrendado', 'Vivo allí'] }).cuerpo;
+  assert.equal(botones.type, 'interactive');
+  assert.equal(botones.interactive.type, 'button');
+  assert.deepEqual(botones.interactive.action.buttons.map((b) => b.reply.title), ['Desocupado', 'Arrendado', 'Vivo allí']);
+  const lista = meta.solicitudEnvio(wa, '¿En cuánto tiempo?', null, { tipo: 'campo', titulos: luciaReal.campos.find((c) => c.clave === 'plazo_meses').menu.map((m) => m.titulo) }).cuerpo.interactive;
+  assert.equal(lista.type, 'list');
+  assert.ok(lista.action.sections[0].rows.every((r) => r.title.length <= 24));
+  const horarios = meta.solicitudEnvio(wa, 'Elige:\n1. Martes', null, { tipo: 'horarios', titulos: ['Martes 28 de octubre, 10:00 a. m.'] }).cuerpo.interactive;
+  assert.deepEqual(horarios.action.sections[0].rows[0], { id: 'horario_1', title: 'Opción 1', description: 'Martes 28 de octubre, 10:00 a. m.' });
+  assert.equal(meta.solicitudEnvio(wa, 'Hola', { url: 'https://x.co/d.pdf', nombre_archivo: 'd.pdf' }, { tipo: 'campo', titulos: ['A', 'B'] }).cuerpo.type, 'document', 'un documento no lleva botones');
+
+  const ig = ctxBase({ canal: { id: 'k2', tipo: 'instagram_dm', identificador_externo: 'IG1' }, contacto: { ...ctxBase().contacto, instagram_id: 'U1' } });
+  assert.equal(meta.solicitudEnvio(ig, '¿Cómo está tu inmueble?', null, { tipo: 'campo', titulos: ['Desocupado', 'Arrendado'] }).cuerpo.message.text, '¿Cómo está tu inmueble?\n\n1️⃣ Desocupado\n2️⃣ Arrendado');
+  assert.equal(meta.solicitudEnvio(ig, 'Elige:\n1. Martes\n2. Jueves', null, { tipo: 'horarios', titulos: ['Martes', 'Jueves'] }).cuerpo.message.text, 'Elige:\n1️⃣ Martes\n2️⃣ Jueves');
+});
+
+test('respuesta de una lista de WhatsApp: llega con la descripción para leer el horario', () => {
+  const m = meta.normalizarWebhook({ object: 'whatsapp_business_account', entry: [{ changes: [{ field: 'messages', value: {
+    metadata: { phone_number_id: 'PN1' },
+    messages: [{ id: 'wamid.9', from: '573001112233', type: 'interactive', interactive: { list_reply: { id: 'horario_2', title: 'Opción 2', description: 'Miércoles 29 de octubre, 3:00 p. m.' } } }],
+  } }] }] });
+  assert.equal(m[0].texto, 'Opción 2 — Miércoles 29 de octubre, 3:00 p. m.');
+});
+
+test('flujo: planificar pasa por guiarRespuesta y el envío lleva las opciones', async () => {
+  const ctx = ctxLucia({ plantillas: plantillasDe('lucia'), resultado_agenda: { tipo: 'ofrecidos', texto: '1. Martes 28 de octubre, 10:00 a. m.' } });
+  const planificado = await ejecutarCode('Planificar respuesta', { r: ctx });
+  assert.equal(planificado.json.plan.guia.plantilla, 'calificado');
+  const redactado = await ejecutarCode('Interpretar redacción', openaiOk('Te propongo una llamada con Javier. ¿Cuál prefieres?\n{{horarios_disponibles}}'), { 'Planificar respuesta': planificado.json });
+  const envio = await ejecutarCode('Preparar envío', redactado.json);
+  assert.equal(envio.json.envio.cuerpo.type, 'interactive');
+  assert.match(envio.json.envio.cuerpo.interactive.body.text, /1\. Martes 28 de octubre/);
 });

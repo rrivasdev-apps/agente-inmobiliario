@@ -15,7 +15,7 @@ Stack: Meta (WhatsApp / Instagram) · n8n · OpenAI · Supabase · Google Maps �
 config/tenants/<tenant>/      Configuración por empresa (fuente del seed)
   tenant.json                 Canales e integraciones
   roles/lucia.json, sonia.json  Campos, criterios y etiqueta CRM
-  plantillas.json             Textos conversacionales (PRD §7)
+  plantillas.json             Mensajes guía (el agente los redacta); literales solo los de Meta (PRD §7)
 prompts/                      Prompts de sistema (común, Lucía, Sonia, clasificador)
 src/calificacion/evaluar.js   Motor de calificación determinista (sin dependencias)
 src/integraciones/gohighlevel.js  Contactos y calendario de GoHighLevel (funciones puras)
@@ -25,6 +25,7 @@ supabase/migrations/          Esquema de base de datos
 supabase/seed.sql             GENERADO desde config/ y prompts/
 tests/                        Pruebas del evaluador y de la base de datos
 docs/                         Arquitectura y plan de implementación
+entregables/                  Archivos para Javier y sus respuestas (validaciones, plantillas de Meta, guion)
 ```
 
 ## Comandos

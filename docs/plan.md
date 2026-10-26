@@ -53,7 +53,18 @@ Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https
 | Todo umbral es parámetro | 9 oct 2026 | `config/tenants/<tenant>/tenant.json` → `parametros` (ver [configuracion.md](configuracion.md)) |
 
 | Validación de Javier | 17 oct 2026 | `entregables/Validacion_Lucia_Sonia_validado_2026-10-17.xlsx`: mensajes aprobados; horario 9:00 a. m. a 9:00 p. m.; tipos apartamento, casa, terreno, oficina; valor mínimo de venta 200.000.000 COP; ciudades y destinatarios del reporte en tablas (`app.ciudades_cobertura`, `app.usuarios`). Pendientes: video, borrador del acuerdo, dossier y marca de las plantillas de Meta |
-| Cobertura por barrio desde hoja de Google | 19 oct 2026 | `app.barrios_cobertura` sincronizada cada 15 min por n8n. Ver [cobertura.md](cobertura.md). Pendiente: que Lucía la use al calificar, y reconciliar los demás acuerdos de la reunión (precio mínimo 450 M, premium > 1.000 M, solo venta, tono formal, Sonia inactiva) |
+| Cobertura por barrio desde hoja de Google | 19 oct 2026 | `app.barrios_cobertura` sincronizada cada 15 min por n8n. Ver [cobertura.md](cobertura.md). Desde el 26 oct Lucía la usa al calificar. Pendiente de la reunión: tono formal y Sonia inactiva |
+| Conversación libre, decisiones fijas | 26 oct 2026 | Las plantillas son guías: el agente las redacta con sus palabras y el código rellena los datos exactos (horarios, fechas, comisión, enlaces). Solo las aprobadas por Meta (`requiere_aprobacion_meta`) van literales. Si la redacción no respeta los datos, se envía el texto literal. Ver [n8n.md](n8n.md#cómo-funciona-un-turno) |
+| Guion de Lucía de Javier | 26 oct 2026 | `entregables/Guion_Lucia_Javier_2026-10-26.docx`: estado del inmueble, si está publicado, otros decisores, respuestas por plazo y valor, objeciones de precio y exclusividad, referencia por barrio y por valor. Ver decisiones D1 a D8 abajo |
+| Revisión de plantillas de Meta | 26 oct 2026 | `entregables/Plantillas_Meta_JNdelT_revision_Javier_2026-10-26.xlsx` (cambios en rojo) aplicada en `entregables/Plantillas_Meta_JNdelT.xlsx`, columna "Revisión de Javier"; 4 plantillas nuevas del guion. Ninguna enviada a Meta |
+| D1 Encuentro | 26 oct 2026 | Llamada telefónica (donde el guion dice "visita") |
+| D2 Valor de la propiedad | 26 oct 2026 | Mínimo 450.000.000 COP; menos → referencia a un colega con autorización, no se archiva. Desde 1.000.000.000 COP, respuesta premium |
+| D3 Opciones | 26 oct 2026 | Botones (hasta 3) o lista en WhatsApp; lista con emojis numerados en Instagram (`menu` en `roles/lucia.json`, horarios) |
+| D4 Documentos | 26 oct 2026 | Solo se menciona en la confirmación tener a mano escritura, certificado de tradición y predial; no se piden ni se reciben por chat |
+| D5 Prioridad B | 26 oct 2026 | Se agenda a futuro: horarios desde `prioridad.baja_agendar_desde_dias` (14, provisional). También es B quien no da el valor tras dos intentos (`valor_no_informado`) |
+| D6 Permiso inicial | 26 oct 2026 | Lucía sigue pidiendo permiso antes de las preguntas |
+| D7 Datos en blanco del guion | 26 oct 2026 | Parámetros en `null` hasta que Javier los entregue; mientras tanto el agente no los menciona (ver pendientes) |
+| D8 Video | 26 oct 2026 | Con `comercial.propuesta.video_url`, la propuesta se envía con el video (`propuesta_video`); sin URL no se ofrece |
 
 ## Decisiones pendientes que bloquean etapas
 
@@ -67,7 +78,9 @@ Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https
 | Dossier y destinatarios del reporte | Nutrición / reporte | Sin configurar |
 | Política de duplicados en GHL | Etapa 3 | Teléfono, luego correo |
 | Etiquetas, etapas y campos en GHL | Etapa 3 | `agente-lucia`, `agente-sonia` |
-| Plantillas aprobadas por Meta | Etapa 2 | `pendiente_agenda` marcada como requerida |
+| Plantillas aprobadas por Meta | Etapa 2 | 14 en borrador en `entregables/Plantillas_Meta_JNdelT.xlsx`; en el sistema solo `pendiente_agenda` marcada como requerida. Faltan los envíos programados |
+| Datos del guion de Javier (D5, D7, D8) | Activar partes del guion | Días para agendar la prioridad B (14 provisional); condición del 2,5 % si el propietario consigue al comprador; plazo y cláusula de salida de la exclusividad; informe mensual; días de seguimiento tras "déjame pensarlo"; plazo para conseguir colega (48 o 72 h); días y franjas de llamadas; URL del video |
+| Referencia aceptada: ¿prometer contacto? | Aceptación | El guion dice "le paso tu información hoy mismo y se comunicará contigo"; el agente sigue sin prometer contacto hasta que haya colegas aliados confirmados |
 | Dirección no verificable: ¿archivar o revisión manual? | Etapa 3 | Se marca no calificado con motivo `direccion_no_verificada` |
 | Tiempos de conservación de datos | Antes de producción | Sin política de borrado |
 | Teléfono obligatorio para contactos de Instagram | Etapa 2 | Obligatorio (se pregunta en DM) |

@@ -6,6 +6,7 @@ Archivo: [`n8n/agente-inmobiliario.json`](../n8n/agente-inmobiliario.json), **ge
 - `src/n8n/conversacion.js`: solicitudes a OpenAI y decisión de la respuesta.
 - `src/n8n/geocodificacion.js`: clasificación del resultado de Google Maps.
 - `src/calificacion/evaluar.js`: calificación determinista.
+- `src/cobertura/barrios.js`: cobertura por barrio al calificar.
 - `prompts/clasificador.md`.
 
 No se edita en n8n: se cambia el código, se regenera y se publica (ver abajo). `npm run n8n:check` falla si el JSON no está al día.
@@ -23,9 +24,11 @@ POST /webhook/agente-inmobiliario/meta     (responde 200 de inmediato)
   4. Sin rol → OpenAI clasifica → app.asignar_rol  (ambigua → plantilla seleccion_intencion)
   5. OpenAI extrae datos → app.registrar_datos (solo claves y tipos del rol)
   6. Lucía con dirección completa sin verificar → Google Maps → app.registrar_verificacion
-  7. evaluar.js → app.guardar_evaluacion (auditoría + transición de estado)
-  8. Respuesta: plantilla fija o redacción con OpenAI
-       archivar → no_calificado · aclarar_direccion → direccion_ambigua
+  7. evaluar.js (+ barrio con src/cobertura/barrios.js) → app.guardar_evaluacion (auditoría + transición de estado)
+  8. Respuesta: planificarRespuesta elige la plantilla; guiarRespuesta la deja literal (Meta) o la redacta OpenAI
+       archivar → no_calificado (o fuera_cobertura / fuera_cobertura_barrio / referencia_valor) · aclarar_direccion → direccion_ambigua
+       la guía viaja con marcadores {{horarios_disponibles}}, {{fecha}}…: interpretarRedaccion los rellena o, si no se respetan, envía el texto literal
+       campos con menu y horarios → botones o lista en WhatsApp, emojis numerados en Instagram
   8b. Calificado → agendamiento con GoHighLevel (src/n8n/agenda.js):
        sin horarios ofrecidos → upsert del contacto → horarios libres → app.registrar_oferta → plantilla calificado
        eligió un horario de la lista → crear cita → app.registrar_cita → plantilla confirmacion

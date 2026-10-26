@@ -2,7 +2,15 @@
 
 **Decisión (19 de octubre de 2026, reunión con Javier Núñez):** los propietarios se califican también por el barrio del inmueble. Los barrios atendidos salen de una hoja de Google que mantiene el equipo, no del código. Complementa `app.ciudades_cobertura` (0009): la ciudad dice si el inmueble está en el mercado; el barrio, si se atiende directamente o se refiere a un colega.
 
-> Estado (21 oct 2026): la tabla y la sincronización están en producción. **Lucía todavía no usa el barrio para calificar**; conectarlo al flujo principal es el siguiente paso.
+> Estado (26 oct 2026): la tabla y la sincronización están en producción. En el repositorio, Lucía ya usa el barrio para calificar (migración 0017 y regla `cobertura_barrio`); falta aplicarlo en Supabase y publicar el flujo.
+
+## Al calificar
+
+Con la ciudad atendida y el barrio dado, `app.contexto_conversacion` trae las filas activas de `app.barrios_cobertura` y `resolverBarrio` decide:
+
+- **Atendido** (`Sí`): sigue la calificación.
+- **No atendido** (`No`): regla temprana `cobertura_barrio`; Lucía envía `fuera_cobertura_barrio` y pide autorización para una posible referencia.
+- **Desconocido, ambiguo o sin definir**: no descarta a nadie; queda una advertencia en `app.eventos` (`operacion = 'cobertura_barrio'`) para revisar la hoja.
 
 ## Cómo se actualiza
 

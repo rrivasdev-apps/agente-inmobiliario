@@ -20,10 +20,12 @@
     },
     "propietarios": {
       "relaciones_validas": ["propietario", "copropietario", "apoderado"],
-      "valor_minimo_cop": 200000000
+      "valor_minimo_cop": 450000000,
+      "valor_premium_cop": 1000000000
     },
     "prioridad": {
-      "alta_hasta_meses": 3
+      "alta_hasta_meses": 3,
+      "baja_agendar_desde_dias": 14
     },
     "compra": {
       "presupuesto_minimo_cop": 200000000
@@ -58,14 +60,24 @@
     "comercial": {
       "asesor": "Javier",
       "asesor_nombre_completo": "Javier Núñez del Toro",
-      "argumento_exclusividad": "Comenta que trabajar la propiedad en exclusiva con Javier permite cuidarla mejor y que en una conversación breve él puede mostrarle las diferencias.",
+      "argumento_exclusividad": "Comenta que, cuando varias agencias ofrecen el mismo inmueble, ninguna invierte en promocionarlo y el comprador lo ve repetido, a veces con precios distintos; con exclusividad la promoción es más concentrada y hay un solo responsable. Javier lo explica en la llamada, sin compromiso.",
       "propuesta": {
         "exclusiva": true,
         "comision_pct": 5,
+        "comision_solo_si_vende": true,
+        "comision_comprador_propio_pct": null,
+        "plazo_exclusividad_meses": null,
+        "clausula_salida": null,
+        "informe_mensual": null,
         "beneficios": [],
         "video_url": null,
+        "video_minutos": null,
         "acuerdo_url": null
       }
+    },
+    "seguimiento": {
+      "dias_tras_pensarlo": null,
+      "horas_para_aliado": null
     }
   },
   "canales": [

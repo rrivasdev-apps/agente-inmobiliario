@@ -28,7 +28,10 @@ function textoWhatsApp(m) {
     case 'button': return m.button && m.button.text;
     case 'interactive': {
       const i = m.interactive || {};
-      return (i.button_reply && i.button_reply.title) || (i.list_reply && i.list_reply.title);
+      if (i.button_reply) return i.button_reply.title;
+      // Lista: "Opción 1 — Martes 28 de octubre, 10:00 a. m." para que la extracción vea el horario.
+      if (i.list_reply) return [i.list_reply.title, i.list_reply.description].filter(Boolean).join(' — ');
+      return null;
     }
     default: return null;
   }
@@ -100,12 +103,50 @@ function normalizarWebhook(cuerpo) {
   return salida.filter((m) => m.identificador_canal && m.id_externo && m.remitente_id);
 }
 
+const KEYCAPS = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+
+/**
+ * Opciones de respuesta (decisión del 26 oct 2026): en WhatsApp, botones (hasta
+ * 3 de máximo 20 caracteres) o lista (hasta 10); en Instagram, que no tiene
+ * botones, como líneas con emojis numerados.
+ * `opciones`: { tipo: 'campo' | 'horarios', titulos: string[] }.
+ */
+function interactivo(texto, opciones) {
+  const titulos = opciones.titulos.slice(0, 10);
+  if (texto.length > 1024 || !titulos.length) return null;
+  if (opciones.tipo === 'campo' && titulos.length <= 3 && titulos.every((t) => t.length <= 20)) {
+    return {
+      type: 'button',
+      body: { text: texto },
+      action: { buttons: titulos.map((t, i) => ({ type: 'reply', reply: { id: `opcion_${i + 1}`, title: t } })) },
+    };
+  }
+  const rows = opciones.tipo === 'horarios'
+    ? titulos.map((t, i) => ({ id: `horario_${i + 1}`, title: `Opción ${i + 1}`, description: t.slice(0, 72) }))
+    : titulos.map((t, i) => ({ id: `opcion_${i + 1}`, title: t.slice(0, 24) }));
+  return {
+    type: 'list',
+    body: { text: texto },
+    action: { button: opciones.tipo === 'horarios' ? 'Ver horarios' : 'Ver opciones', sections: [{ title: 'Opciones', rows }] },
+  };
+}
+
+function conEmojis(texto, opciones) {
+  if (opciones.tipo === 'horarios') return texto.replace(/^(\d{1,2})\.\s/gm, (todo, n) => (KEYCAPS[n - 1] ? `${KEYCAPS[n - 1]} ` : todo));
+  return `${texto}\n\n${opciones.titulos.slice(0, 10).map((t, i) => `${KEYCAPS[i]} ${t}`).join('\n')}`;
+}
+
+const conTitulos = (o) => o && Array.isArray(o.titulos) && o.titulos.length ? o : null;
+
 /**
  * Solicitud a la Graph API para responder por el canal de la conversación.
  * `documento` ({ url, nombre_archivo }) se envía en WhatsApp como archivo con
  * el texto como descripción; en Instagram, como enlace al final del texto.
+ * `opciones` se envían como botones o lista en WhatsApp y con emojis en
+ * Instagram (un documento no admite botones: tiene prioridad).
  */
-function solicitudEnvio(ctx, texto, documento) {
+function solicitudEnvio(ctx, texto, documento, opciones) {
+  opciones = documento ? null : conTitulos(opciones);
   if (ctx.canal.tipo === 'whatsapp' && documento) {
     return {
       url: `${GRAPH}/${encodeURIComponent(ctx.canal.identificador_externo)}/messages`,
@@ -120,21 +161,24 @@ function solicitudEnvio(ctx, texto, documento) {
   }
   if (documento) texto = `${texto}\n\n${documento.url}`;
   if (ctx.canal.tipo === 'whatsapp') {
+    const base = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: String(ctx.contacto.telefono || '').replace(/\D/g, ''),
+    };
+    const botones = opciones && interactivo(texto, opciones);
     return {
       url: `${GRAPH}/${encodeURIComponent(ctx.canal.identificador_externo)}/messages`,
-      cuerpo: {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: String(ctx.contacto.telefono || '').replace(/\D/g, ''),
-        type: 'text',
-        text: { preview_url: false, body: texto },
-      },
+      cuerpo: botones
+        ? { ...base, type: 'interactive', interactive: botones }
+        // Con un enlace (p. ej. el video del proceso) se muestra la vista previa.
+        : { ...base, type: 'text', text: { preview_url: /https:\/\//.test(texto), body: texto } },
     };
   }
   if (ctx.canal.tipo === 'instagram_dm') {
     return {
       url: `${GRAPH}/me/messages`,
-      cuerpo: { recipient: { id: ctx.contacto.instagram_id }, message: { text: texto } },
+      cuerpo: { recipient: { id: ctx.contacto.instagram_id }, message: { text: opciones ? conEmojis(texto, opciones) : texto } },
     };
   }
   throw new Error(`Canal sin envío configurado: ${ctx.canal.tipo}`);
