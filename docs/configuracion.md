@@ -29,7 +29,11 @@ Todo umbral de negocio vive en `config/tenants/<tenant>/tenant.json` → `parame
 | `seguimiento.dias_tras_pensarlo` | `2` (provisional) | Días para escribir tras "déjame pensarlo". Aún no se usa: Lucía no lo promete hasta que existan los envíos programados. |
 | `seguimiento.horas_para_aliado` | `72` (provisional) | Plazo para conseguir un colega aliado antes de avisarle a la persona. Aún no se usa, por la misma razón. |
 | `agenda.hora_minima` / `agenda.hora_maxima` | `"09:00"` / `"17:00"` | Horario de llamadas (hora de Bogotá, 27 oct 2026), además de la disponibilidad del calendario. El encuentro debe terminar a la hora de cierre (si no hay duración configurada, debe empezar antes). |
-| `agenda.dias_semana` | lunes a viernes | Días en que se ofrecen llamadas (`lunes` … `domingo`, sin tildes). Sin el parámetro, todos los días. |
+| `agenda.dias_semana` | lunes a sábado | Respaldo: solo se usa si no hay `ventanas_llamada`. Días en que se ofrecen llamadas (`lunes` … `domingo`, sin tildes). Sin el parámetro, todos los días. |
+| `agenda.ventanas_llamada` | ver abajo (provisional) | Ventanas de llamada de cada día según el cronograma de Javier, fuera de las visitas: `{ "lunes": [["09:00", "12:30"]], ... }`. Un día que no aparece no tiene llamadas. Cuando existe, reemplaza `hora_minima`, `hora_maxima` y `dias_semana`. |
+| `agenda.viernes_rotacion` | 1.º sin llamadas; 2.º a 5.º de 13:30 a 17:00 (provisional) | Ventanas del viernes según su número en el mes (1.º contenido, 2.º valoraciones extra, 3.º relacional, 4.º revisión). Gana sobre `ventanas_llamada.viernes`. |
+| `agenda.excepciones` | festivos y traslados de nov 2026 a ene 2027 | `[{ "fecha": "AAAA-MM-DD", "ventanas": [], "motivo": "..." }]`: ventanas de ese día; `[]` = sin llamadas. Gana sobre todo lo anterior salvo las vacaciones. |
+| `agenda.vacaciones` | 23 dic 2026 – 11 ene 2027 | `{ "desde", "hasta", "retorno_texto" }`: sin llamadas en esas fechas; durante las vacaciones los horarios se buscan desde el día siguiente a `hasta` y se ofrecen con la plantilla `calificado_vacaciones`. |
 | `agenda.franjas` | mañana 09:00–12:00, tarde 12:00–17:00 | Qué significa "en la mañana" o "en la tarde" cuando la persona pide otro horario. Claves: `manana`, `tarde`, `noche`. |
 | `agenda.encuentros` | llamada, videollamada, presencial | Cómo se nombra cada modalidad en la confirmación y quién contacta a quién. **Por validar con Javier.** |
 | `comercial.asesor` | `"Javier"` | Nombre con el que el agente se refiere al asesor en las objeciones ("eso lo revisa Javier en la reunión"). |
@@ -48,6 +52,23 @@ Las reglas de cada rol (`roles/*.json` → `criterios`) usan estos parámetros c
 4. **Prioridad**: plazo ≤ `prioridad.alta_hasta_meses` → alta → horarios y cita en GoHighLevel. Si no → baja: con `prioridad.baja_agendar_desde_dias` (Lucía) se agenda a partir de esos días, salvo que el plazo supere `prioridad.baja_agendar_hasta_meses`; sin él (Sonia), plantilla `prioridad_baja` (+ dossier si existe), estado `nutricion`, sin cita. Si la persona vuelve con urgencia, pasa a agendar.
 
 Condiciones de los criterios: `si` aplica una regla o campo solo con cierto valor de otro dato; `salvo`, al revés (el valor de la propiedad no se exige ni se evalúa con `valor_no_informado`). `prioridad.baja_si` fuerza prioridad baja.
+
+## Agenda de llamadas según el cronograma de Javier (27 oct 2026)
+
+Fuente: `entregables/Cronograma_Javier_2026-10-22.docx`. Lucía agenda **llamadas** en los huecos que dejan las visitas de valoración y las demás actividades; las visitas las maneja Javier.
+
+| Día | Llamadas (provisional) | Ocupado en el cronograma |
+|---|---|---|
+| Lunes | 9:00–12:30 | Tarde: visitas en Usaquén |
+| Martes | 3:30–5:00 p. m. | Visitas en Chapinero y Barrios Unidos |
+| Miércoles | 9:00–10:00 | Visitas en Suba; tarde: ventaneros |
+| Jueves | 1:30–5:00 p. m. | Mañana: visitas en Usaquén |
+| Viernes | según `viernes_rotacion` | Mañana: contenido, valoraciones extra, relacional o revisión |
+| Sábado | 11:00–12:30 | Valoraciones 9:00 y 10:00; tarde: mostrar propiedades |
+
+El orden con que se decide cada fecha: vacaciones → excepción de la fecha → viernes según su número → ventana semanal. La llamada debe terminar dentro de la ventana (con `duracion_minutos` del calendario).
+
+**Mes a mes:** cuando Javier envíe el cronograma siguiente, se agregan sus festivos y traslados a `agenda.excepciones` (en Supabase, `app.tenants.parametros`, o en `tenant.json` y el seed). Las fechas pasadas pueden quedarse: no afectan.
 
 ## Mensajes: guía y datos exactos (26 oct 2026)
 

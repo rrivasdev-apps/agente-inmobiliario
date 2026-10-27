@@ -840,6 +840,15 @@ function textoGuiado(redactado, guia) {
   return rellenar(redactado, guia.datos || {});
 }
 
+/** Vacaciones del asesor en curso hoy (hora del tenant), o null. `ctx.ahora` permite fijar la fecha. */
+function vacacionesVigentes(ctx) {
+  const v = (((ctx.tenant && ctx.tenant.parametros) || {}).agenda || {}).vacaciones;
+  if (!v || !v.desde || !v.hasta) return null;
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: ctx.tenant.zona_horaria, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(ctx.ahora || Date.now()));
+  return hoy >= v.desde && hoy <= v.hasta ? v : null;
+}
+
 /**
  * Decide la respuesta del turno.
  * @returns {{ respuesta_fija: {texto, plantilla} | null, solicitud_llm: object | null, eventos: object[] }}
@@ -869,6 +878,9 @@ function planificarRespuesta(ctx) {
   let claveAgenda = ra && PLANTILLA_POR_RESULTADO_AGENDA[ra.tipo];
   // Prioridad B (agendar a futuro): los primeros horarios se ofrecen con su plantilla.
   if (claveAgenda === 'calificado' && (ctx.evaluacion || {}).agendar_desde_dias !== undefined && p.calificado_futuro) claveAgenda = 'calificado_futuro';
+  // En vacaciones del asesor (parametros.agenda.vacaciones) se explica por qué los horarios son después.
+  const vac = vacacionesVigentes(ctx);
+  if (['calificado', 'calificado_futuro'].includes(claveAgenda) && vac && p.calificado_vacaciones) claveAgenda = 'calificado_vacaciones';
   if (claveAgenda && p[claveAgenda]) {
     const encuentro = encuentroDe(ctx, ra.modalidad);
     // Horarios numerados: en WhatsApp también como lista para tocar; en Instagram, con emojis.
@@ -884,6 +896,7 @@ function planificarRespuesta(ctx) {
       hora: ra.hora,
       zona_horaria: ra.zona_texto || ra.zona_horaria,
       modalidad: ra.modalidad,
+      retorno: vac && vac.retorno_texto,
     }));
   }
 

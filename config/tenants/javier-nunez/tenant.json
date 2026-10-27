@@ -52,7 +52,38 @@
     "agenda": {
       "hora_minima": "09:00",
       "hora_maxima": "17:00",
-      "dias_semana": ["lunes", "martes", "miercoles", "jueves", "viernes"],
+      "dias_semana": ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado"],
+      "ventanas_llamada": {
+        "lunes": [["09:00", "12:30"]],
+        "martes": [["15:30", "17:00"]],
+        "miercoles": [["09:00", "10:00"]],
+        "jueves": [["13:30", "17:00"]],
+        "viernes": [["13:30", "17:00"]],
+        "sabado": [["11:00", "12:30"]]
+      },
+      "viernes_rotacion": {
+        "1": [],
+        "2": [["13:30", "17:00"]],
+        "3": [["13:30", "17:00"]],
+        "4": [["13:30", "17:00"]],
+        "5": [["13:30", "17:00"]]
+      },
+      "excepciones": [
+        {"fecha": "2026-11-02", "ventanas": [], "motivo": "Festivo"},
+        {"fecha": "2026-11-06", "ventanas": [], "motivo": "1.er viernes: contenido en la mañana y visitas de Usaquén del lunes festivo en la tarde"},
+        {"fecha": "2026-11-16", "ventanas": [], "motivo": "Festivo"},
+        {"fecha": "2026-11-20", "ventanas": [], "motivo": "3.er viernes: relacional en la mañana y visitas de Usaquén del lunes festivo en la tarde"},
+        {"fecha": "2026-12-08", "ventanas": [], "motivo": "Festivo"},
+        {"fecha": "2026-12-11", "ventanas": [], "motivo": "5 visitas en Chapinero y Barrios Unidos (cupos del martes festivo)"},
+        {"fecha": "2026-12-21", "ventanas": [], "motivo": "Semana corta: 6 visitas en Usaquén"},
+        {"fecha": "2026-12-22", "ventanas": [], "motivo": "Semana corta: visitas en Chapinero y Barrios Unidos y cierre pre-vacaciones"},
+        {"fecha": "2026-12-25", "ventanas": [], "motivo": "Festivo"},
+        {"fecha": "2027-01-01", "ventanas": [], "motivo": "Festivo"},
+        {"fecha": "2027-01-11", "ventanas": [], "motivo": "Festivo"},
+        {"fecha": "2027-01-12", "ventanas": [["15:30", "17:00"]], "motivo": "Regreso: 5 visitas en Chapinero y Barrios Unidos"},
+        {"fecha": "2027-01-15", "ventanas": [], "motivo": "6 visitas en Usaquén para absorber lo acumulado"}
+      ],
+      "vacaciones": {"desde": "2026-12-23", "hasta": "2027-01-11", "retorno_texto": "el martes 12 de enero"},
       "franjas": {
         "manana": ["09:00", "12:00"],
         "tarde": ["12:00", "17:00"]
@@ -125,7 +156,7 @@
           "videollamada": "gmeet",
           "presencial": "address"
         },
-        "dias_a_consultar": 7,
+        "dias_a_consultar": 14,
         "antelacion_minima_minutos": 60,
         "horarios_a_ofrecer": 4,
         "horarios_por_dia": 2

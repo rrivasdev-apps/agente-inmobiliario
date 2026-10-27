@@ -62,7 +62,8 @@ Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https
 | D3 Opciones | 26 oct 2026 | Botones (hasta 3) o lista en WhatsApp; lista con emojis numerados en Instagram (`menu` en `roles/lucia.json`, horarios) |
 | D4 Documentos | 26 oct 2026 | Solo se menciona en la confirmación tener a mano escritura, certificado de tradición y predial; no se piden ni se reciben por chat |
 | D5 Prioridad B | 26 oct 2026 | Se agenda a futuro: horarios desde `prioridad.baja_agendar_desde_dias` (14, provisional), con plazos de hasta `prioridad.baja_agendar_hasta_meses` (12, provisional); más allá, nutrición. También es B quien no da el valor tras dos intentos (`valor_no_informado`) |
-| Horario de llamadas | 27 oct 2026 | Lunes a viernes de 9:00 a. m. a 5:00 p. m. (`agenda.dias_semana`, `agenda.hora_minima`, `agenda.hora_maxima`). Reemplaza el horario de 9:00 a. m. a 9:00 p. m. del 17 oct |
+| Horario de llamadas | 27 oct 2026 | ~~Lunes a viernes de 9:00 a. m. a 5:00 p. m.~~ Reemplazado el mismo día por el cronograma de Javier |
+| Cronograma de Javier (nov 2026 – ene 2027) | 27 oct 2026 | `entregables/Cronograma_Javier_2026-10-22.docx`. Lucía sigue agendando llamadas, solo en los huecos que dejan las visitas y actividades, sábados incluidos (`agenda.ventanas_llamada`, `viernes_rotacion`, `excepciones`, `vacaciones`). Ver [configuracion.md](configuracion.md#agenda-de-llamadas-según-el-cronograma-de-javier-27-oct-2026) |
 | D6 Permiso inicial | 26 oct 2026 | Lucía sigue pidiendo permiso antes de las preguntas |
 | D7 Datos en blanco del guion | 26 oct 2026 | Parámetros en `null` hasta que Javier los entregue; mientras tanto el agente no los menciona (ver pendientes) |
 | D8 Video | 26 oct 2026 | Con `comercial.propuesta.video_url`, la propuesta se envía con el video (`propuesta_video`); sin URL no se ofrece |
@@ -81,6 +82,8 @@ Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https
 | Etiquetas, etapas y campos en GHL | Etapa 3 | `agente-lucia`, `agente-sonia` |
 | Plantillas aprobadas por Meta | Etapa 2 | 14 en borrador en `entregables/Plantillas_Meta_JNdelT.xlsx`; en el sistema solo `pendiente_agenda` marcada como requerida. Faltan los envíos programados |
 | Datos del guion de Javier (D5, D7, D8) | Confirmar antes de activar el flujo | Todos son parámetros con valor provisional (27 oct, ver [configuracion.md](configuracion.md)): B desde 14 días y hasta 12 meses; 2,5 % si el propietario consigue al comprador durante la exclusividad; exclusividad de 6 meses; cláusula de salida; informe mensual; seguimiento a los 2 días; 72 h para conseguir colega; video de 3 minutos (falta la URL). **Lucía dice estas condiciones a los clientes**: Javier debe confirmarlas |
+| Ventanas de llamada del cronograma | Confirmar con Javier | Provisionales: martes 3:30–5:00 (él lo dejó para propuestas de mandato), sábado 11:00–12:30 y la tarde de colchón del viernes |
+| Avisos de Meta en vacaciones | Antes del 21 dic | Pausarlos del 21 dic al 3 ene o dejarlos activos con la agenda cerrada (decisión de Javier). El agente funciona igual en los dos casos |
 | Referencia aceptada: ¿prometer contacto? | Aceptación | El guion dice "le paso tu información hoy mismo y se comunicará contigo"; el agente sigue sin prometer contacto hasta que haya colegas aliados confirmados |
 | Dirección no verificable: ¿archivar o revisión manual? | Etapa 3 | Se marca no calificado con motivo `direccion_no_verificada` |
 | Tiempos de conservación de datos | Antes de producción | Sin política de borrado |

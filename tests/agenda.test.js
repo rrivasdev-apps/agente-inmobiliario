@@ -117,3 +117,44 @@ test('prioridad B: los horarios se consultan y se ofrecen desde los días config
   assert.deepEqual(r.ofrecidos, ['2026-10-26T10:00:00-05:00'], 'no ofrece horarios antes de esa fecha');
   assert.equal(agenda.planificarAgenda(b, null).paso, 'ofrecer', 'prioridad B también se agenda');
 });
+
+// --- Cronograma de Javier (22 oct 2026): ventanas de llamada fuera de las visitas ---------
+
+const PARAMS = require('../config/tenants/javier-nunez/tenant.json').parametros;
+const conCronograma = (extra = {}) => ctx({
+  tenant: { id: 't1', nombre: 'Equipo', zona_horaria: ZONA, parametros: PARAMS },
+  integraciones: { calendario: { calendar_id: 'CAL1', dias_a_consultar: 14, antelacion_minima_minutos: 0, horarios_a_ofrecer: 50, horarios_por_dia: 50 } },
+  ...extra,
+});
+/** Cuáles de estos horarios (hora de Bogotá) se ofrecerían. */
+function ofrecibles(horas, c = conCronograma(), ahora = new Date('2026-10-28T12:00:00Z')) {
+  const isos = horas.map((h) => `${h}:00-05:00`);
+  const body = Object.fromEntries(isos.map((iso) => [iso.slice(0, 10), { slots: isos.filter((x) => x.startsWith(iso.slice(0, 10))) }]));
+  return agenda.interpretarHorarios({ statusCode: 200, body }, c, ghl, ahora).ofrecidos.map((iso) => iso.slice(0, 16));
+}
+
+test('cronograma: ventanas semanales de llamada, sábados incluidos', () => {
+  assert.deepEqual(ofrecibles([
+    '2026-11-09T09:00', '2026-11-09T12:00', '2026-11-09T14:00', // lunes: mañana sí, tarde (visitas Usaquén) no
+    '2026-11-10T10:00', '2026-11-10T15:30', // martes: mañana (visitas) no, 3:30 sí
+    '2026-11-11T09:00', '2026-11-11T10:00', // miércoles: 9:00 sí, 10:00 (visitas Suba) no
+    '2026-11-12T10:00', '2026-11-12T14:00', // jueves: mañana (visitas) no, tarde sí
+    '2026-11-14T09:00', '2026-11-14T11:00', // sábado: 9:00 (valoraciones) no, 11:00 sí
+    '2026-11-15T11:00', // domingo: no
+  ]), ['2026-11-09T09:00', '2026-11-09T12:00', '2026-11-10T15:30', '2026-11-11T09:00', '2026-11-12T14:00', '2026-11-14T11:00']);
+});
+
+test('cronograma: viernes según su número en el mes y excepciones por fecha', () => {
+  assert.deepEqual(ofrecibles(['2026-11-13T10:00', '2026-11-13T14:00']), ['2026-11-13T14:00'], '2.º viernes: solo la tarde de colchón');
+  assert.deepEqual(ofrecibles(['2026-12-04T10:00', '2026-12-04T14:00']), [], '1.er viernes: contenido, sin llamadas');
+  assert.deepEqual(ofrecibles(['2026-11-02T09:00', '2026-11-06T14:00']), [], 'lunes 2 festivo y viernes 6 con visitas trasladadas');
+  assert.deepEqual(ofrecibles(['2027-01-12T15:30', '2027-01-12T09:00'], conCronograma(), new Date('2027-01-11T23:00:00Z')), ['2027-01-12T15:30'], 'martes de regreso: solo la tarde');
+});
+
+test('cronograma: vacaciones sin llamadas y la consulta empieza al regreso', () => {
+  assert.deepEqual(ofrecibles(['2026-12-23T09:00', '2026-12-29T15:30', '2027-01-04T09:00']), []);
+  const s = agenda.solicitudHorarios(conCronograma(), ghl, new Date('2026-12-24T15:00:00Z'));
+  assert.equal(new Date(s.solicitud.consulta.startDate).toISOString(), '2027-01-12T05:00:00.000Z', 'desde el 12 de enero, hora de Bogotá');
+  const antes = agenda.solicitudHorarios(conCronograma(), ghl, new Date('2026-12-01T15:00:00Z'));
+  assert.equal(new Date(antes.solicitud.consulta.startDate).toISOString(), '2026-12-01T15:00:00.000Z', 'antes de las vacaciones, desde ahora');
+});

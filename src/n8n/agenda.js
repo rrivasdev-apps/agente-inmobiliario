@@ -121,9 +121,24 @@ const fechaLocal = (iso, zona) => new Intl.DateTimeFormat('en-CA', { timeZone: z
  * el inicio de ese día en la zona del tenant, o `ahora` para prioridad alta.
  */
 function primerDiaAgendable(ctx, ahora) {
+  const zona = ctx.tenant.zona_horaria;
   const dias = Number((ctx.evaluacion || {}).agendar_desde_dias);
-  if (!Number.isFinite(dias) || dias <= 0) return ahora;
-  return inicioDelDia(fechaLocal(new Date(ahora.getTime() + dias * 86400000), ctx.tenant.zona_horaria), ctx.tenant.zona_horaria);
+  const desde = !Number.isFinite(dias) || dias <= 0 ? ahora : inicioDelDia(fechaLocal(new Date(ahora.getTime() + dias * 86400000), zona), zona);
+  // Si ese día cae en vacaciones (parametros.agenda.vacaciones), se empieza al día siguiente de que terminan.
+  const v = vacaciones(ctx);
+  const f = fechaLocal(desde, zona);
+  return v && f >= v.desde && f <= v.hasta ? inicioDelDia(diaSiguiente(v.hasta), zona) : desde;
+}
+
+/** parametros.agenda.vacaciones ({ desde, hasta: "AAAA-MM-DD", retorno_texto }) o null. */
+function vacaciones(ctx) {
+  const v = (((ctx.tenant.parametros || {}).agenda) || {}).vacaciones;
+  return v && /^\d{4}-\d{2}-\d{2}$/.test(v.desde) && /^\d{4}-\d{2}-\d{2}$/.test(v.hasta) ? v : null;
+}
+
+function diaSiguiente(fecha) {
+  const [y, m, d] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
 /** Con preferencia de fecha se consulta desde ese día (o desde ahora si ya empezó). */
@@ -152,21 +167,49 @@ const minutosDe = (hhmm) => {
 const DIAS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 const sinTildes = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
 
+/**
+ * Ventanas de llamada de una fecha (cronograma de Javier, 22 oct 2026), como
+ * [[desde, hasta], ...] en minutos, o null si no hay ventanas configuradas.
+ * Orden: vacaciones -> excepción de la fecha -> viernes según su número en el
+ * mes (viernes_rotacion) -> ventana semanal (ventanas_llamada). Un día sin
+ * ventana en ventanas_llamada no tiene llamadas.
+ */
+function ventanasDelDia(a, fecha, dia, v) {
+  const aMinutos = (lista) => (lista || []).map(([d, h]) => [minutosDe(d), minutosDe(h)]).filter(([d, h]) => d !== null && h !== null && d < h);
+  if (v && fecha >= v.desde && fecha <= v.hasta) return [];
+  const excepcion = (a.excepciones || []).find((e) => e && e.fecha === fecha);
+  if (excepcion) return aMinutos(excepcion.ventanas);
+  if (dia === 'viernes' && a.viernes_rotacion) {
+    const n = String(Math.ceil(Number(fecha.slice(8, 10)) / 7));
+    if (Array.isArray(a.viernes_rotacion[n])) return aMinutos(a.viernes_rotacion[n]);
+  }
+  if (a.ventanas_llamada) return aMinutos(a.ventanas_llamada[dia]);
+  return null;
+}
+
 function dentroDelHorario(ctx) {
   const a = ((ctx.tenant.parametros || {}).agenda) || {};
   const min = minutosDe(a.hora_minima);
   const max = minutosDe(a.hora_maxima);
   const dias = Array.isArray(a.dias_semana) && a.dias_semana.length ? new Set(a.dias_semana.map(sinTildes)) : null;
-  if (min === null && max === null && !dias) return () => true;
+  const v = vacaciones(ctx);
+  const conCronograma = a.ventanas_llamada || a.viernes_rotacion || (a.excepciones || []).length || v;
+  if (min === null && max === null && !dias && !conCronograma) return () => true;
   const duracion = Number(config(ctx, 'calendario').duracion_minutos) || 0;
-  const formato = new Intl.DateTimeFormat('en-GB', { timeZone: ctx.tenant.zona_horaria, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  const diaSemana = new Intl.DateTimeFormat('en-US', { timeZone: ctx.tenant.zona_horaria, weekday: 'short' });
+  const zona = ctx.tenant.zona_horaria;
+  const formato = new Intl.DateTimeFormat('en-GB', { timeZone: zona, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const diaSemana = new Intl.DateTimeFormat('en-US', { timeZone: zona, weekday: 'short' });
   const CORTOS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  // El encuentro debe terminar dentro de la ventana (sin duración, debe empezar antes del cierre).
+  const cabe = (t, desde, hasta) => t >= desde && (duracion ? t + duracion <= hasta : t < hasta);
   return (iso) => {
-    if (dias && !dias.has(DIAS[CORTOS.indexOf(diaSemana.format(new Date(iso)))])) return false;
+    const dia = DIAS[CORTOS.indexOf(diaSemana.format(new Date(iso)))];
     const [h, m] = formato.format(new Date(iso)).split(':').map(Number);
     const t = h * 60 + m;
-    return (min === null || t >= min) && (max === null || (duracion ? t + duracion <= max : t < max));
+    const ventanas = conCronograma ? ventanasDelDia(a, fechaLocal(iso, zona), dia, v) : null;
+    if (ventanas) return ventanas.some(([desde, hasta]) => cabe(t, desde, hasta));
+    if (dias && !dias.has(dia)) return false;
+    return cabe(t, min === null ? 0 : min, max === null ? 24 * 60 : max);
   };
 }
 

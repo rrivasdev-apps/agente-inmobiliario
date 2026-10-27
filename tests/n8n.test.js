@@ -623,6 +623,9 @@ test('flujo: la nota para el asesor pasa por la BD y vuelve a la respuesta', asy
 // --- Correcciones de la reunión de revisión (Lucía) -----------------------------------
 
 const PARAMS = require('../config/tenants/javier-nunez/tenant.json').parametros;
+// Agenda sin el cronograma de Javier: solo días, hora mínima y máxima (respaldo).
+const { ventanas_llamada, viernes_rotacion, excepciones, vacaciones, ...AGENDA_BASICA } = PARAMS.agenda;
+const PARAMS_BASICOS = { ...PARAMS, agenda: { ...AGENDA_BASICA, dias_semana: ['lunes', 'martes', 'miercoles', 'jueves', 'viernes'] } };
 const luciaReal = require('../config/tenants/javier-nunez/roles/lucia.json');
 
 function ctxLucia(extra = {}) {
@@ -697,7 +700,7 @@ test('Lucía: fuera de cobertura pide autorización para una posible referencia,
 test('agenda: no ofrece horarios antes de las 9:00 a. m. (hora de Bogotá)', () => {
   const agenda = require('../src/n8n/agenda');
   const ghl = require('../src/integraciones/gohighlevel');
-  const ctx = ctxLucia({ integraciones: { calendario: { horarios_a_ofrecer: 4, horarios_por_dia: 4, antelacion_minima_minutos: 0 } } });
+  const ctx = ctxLucia({ tenant: { ...ctxBase().tenant, parametros: PARAMS_BASICOS }, integraciones: { calendario: { horarios_a_ofrecer: 4, horarios_por_dia: 4, antelacion_minima_minutos: 0 } } });
   const body = { '2030-10-21': { slots: ['2030-10-21T08:00:00-05:00', '2030-10-21T09:00:00-05:00', '2030-10-21T18:00:00-05:00'] } };
   const r = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'));
   assert.deepEqual(r.ofrecidos, ['2030-10-21T09:00:00-05:00'], 'cierre a las 5:00 p. m.: no ofrece las 6:00 p. m.');
@@ -710,7 +713,7 @@ test('agenda: no ofrece horarios antes de las 9:00 a. m. (hora de Bogotá)', () 
   // Lunes a viernes (parametros.agenda.dias_semana, 27 oct 2026): sábado 26 y domingo 27 no se ofrecen.
   const semana = { '2030-10-25': { slots: ['2030-10-25T10:00:00-05:00'] }, '2030-10-26': { slots: ['2030-10-26T10:00:00-05:00'] }, '2030-10-27': { slots: ['2030-10-27T10:00:00-05:00'] } };
   assert.deepEqual(ofrecidos(ctx, semana), ['2030-10-25T10:00:00-05:00'], 'solo el viernes');
-  const todos = { ...ctx, tenant: { ...ctx.tenant, parametros: { ...PARAMS, agenda: { ...PARAMS.agenda, dias_semana: undefined } } } };
+  const todos = { ...ctx, tenant: { ...ctx.tenant, parametros: { ...PARAMS_BASICOS, agenda: { ...PARAMS_BASICOS.agenda, dias_semana: undefined } } } };
   assert.equal(ofrecidos(todos, semana).length, 3, 'sin dias_semana se aceptan todos los días');
 });
 
@@ -915,6 +918,7 @@ test('preferencia: pide otra opción el miércoles y se vuelven a buscar horario
   const ghl = require('../src/integraciones/gohighlevel');
   const pref = { fecha: '2030-10-23', desde: null, hasta: null };
   const ctx = ctxLucia({
+    tenant: { ...ctxBase().tenant, parametros: PARAMS_BASICOS },
     evaluacion: { accion: 'ofrecer_agenda' },
     conversacion: { ...ctxBase().conversacion, agenda: { ofrecidos: ['2030-10-23T15:00:00-05:00'] } },
     integraciones: { calendario: { calendar_id: 'cal', horarios_a_ofrecer: 4, horarios_por_dia: 2, antelacion_minima_minutos: 0 } },
@@ -1247,4 +1251,16 @@ test('propuesta con video: menciona los minutos configurados, y sin duración no
   assert.match(rf(3).guia, /\{\{video_minutos\}\} minutos/, 'la duración es un dato exacto');
   assert.match(rf(null).texto, /un video con nuestro proceso/);
   assert.doesNotMatch(rf(null).texto, /\{\{/);
+});
+
+test('vacaciones: al ofrecer horarios se usa calificado_vacaciones con la fecha de regreso', () => {
+  const ctx = (ahora) => ctxLucia({
+    ahora,
+    plantillas: plantillasDe('lucia'),
+    resultado_agenda: { tipo: 'ofrecidos', texto: '1. Martes 12 de enero, 3:30 p. m.' },
+  });
+  const rf = conv.planificarRespuesta(ctx('2026-12-28T15:00:00Z')).respuesta_fija;
+  assert.equal(rf.plantilla, 'calificado_vacaciones');
+  assert.match(rf.texto, /Javier está de vacaciones y retoma las llamadas el martes 12 de enero/);
+  assert.equal(conv.planificarRespuesta(ctx('2026-12-01T15:00:00Z')).respuesta_fija.plantilla, 'calificado', 'fuera de vacaciones, la plantilla normal');
 });
