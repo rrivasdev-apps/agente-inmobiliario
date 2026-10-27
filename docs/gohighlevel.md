@@ -35,7 +35,7 @@ Base: `https://services.leadconnectorhq.com`.
 3. **Duplicados**: Settings → Business Profile → *Allow Duplicate Contact* desactivado, con prioridad **teléfono** y luego **correo** (AC 23). El upsert aplica esta configuración.
 4. **Calendario**: crear un calendario para las citas con asesores.
    - Tipo *Round Robin* si las citas se reparten entre varios asesores; *Personal* si atiende uno solo.
-   - Definir duración, horario de atención, antelación mínima y zona horaria `America/Bogota`.
+   - Definir duración, horario de atención (lunes a viernes de 9:00 a. m. a 5:00 p. m., igual que `parametros.agenda`), antelación mínima y zona horaria `America/Bogota`. El agente también filtra ese horario, como segunda barrera.
    - Habilitar las modalidades (teléfono, Google Meet, presencial).
    - **No** exigir confirmación manual de la cita, o las citas quedarán en estado pendiente.
 5. **Asesores**: cada asesor debe ser usuario de la subcuenta. Registrar su `ghl_user_id` en `app.asesores` para enlazar la asignación del calendario con la entrega.

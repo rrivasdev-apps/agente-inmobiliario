@@ -698,14 +698,27 @@ test('agenda: no ofrece horarios antes de las 9:00 a. m. (hora de Bogotá)', () 
   const agenda = require('../src/n8n/agenda');
   const ghl = require('../src/integraciones/gohighlevel');
   const ctx = ctxLucia({ integraciones: { calendario: { horarios_a_ofrecer: 4, horarios_por_dia: 4, antelacion_minima_minutos: 0 } } });
-  const body = { '2030-10-21': { slots: ['2030-10-21T08:00:00-05:00', '2030-10-21T09:00:00-05:00', '2030-10-21T23:00:00-05:00'] } };
+  const body = { '2030-10-21': { slots: ['2030-10-21T08:00:00-05:00', '2030-10-21T09:00:00-05:00', '2030-10-21T18:00:00-05:00'] } };
   const r = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'));
-  assert.deepEqual(r.ofrecidos, ['2030-10-21T09:00:00-05:00'], 'cierre a las 9:00 p. m.: no ofrece las 11:00 p. m.');
-  const conTarde = { '2030-10-21': { slots: ['2030-10-21T20:00:00-05:00', '2030-10-21T20:30:00-05:00', '2030-10-21T21:00:00-05:00'] } };
-  const ofrecidos = (c) => agenda.interpretarHorarios({ statusCode: 200, body: conTarde }, c, ghl, new Date('2030-10-20T00:00:00Z')).ofrecidos;
-  assert.deepEqual(ofrecidos(ctx), ['2030-10-21T20:00:00-05:00', '2030-10-21T20:30:00-05:00'], 'sin duración: debe empezar antes del cierre');
+  assert.deepEqual(r.ofrecidos, ['2030-10-21T09:00:00-05:00'], 'cierre a las 5:00 p. m.: no ofrece las 6:00 p. m.');
+  const conTarde = { '2030-10-21': { slots: ['2030-10-21T16:00:00-05:00', '2030-10-21T16:30:00-05:00', '2030-10-21T17:00:00-05:00'] } };
+  const ofrecidos = (c, b = conTarde) => agenda.interpretarHorarios({ statusCode: 200, body: b }, c, ghl, new Date('2030-10-20T00:00:00Z')).ofrecidos;
+  assert.deepEqual(ofrecidos(ctx), ['2030-10-21T16:00:00-05:00', '2030-10-21T16:30:00-05:00'], 'sin duración: debe empezar antes del cierre');
   const conDuracion = { ...ctx, integraciones: { calendario: { ...ctx.integraciones.calendario, duracion_minutos: 60 } } };
-  assert.deepEqual(ofrecidos(conDuracion), ['2030-10-21T20:00:00-05:00'], 'con duración: debe terminar a la hora de cierre');
+  assert.deepEqual(ofrecidos(conDuracion), ['2030-10-21T16:00:00-05:00'], 'con duración: debe terminar a la hora de cierre');
+
+  // Lunes a viernes (parametros.agenda.dias_semana, 27 oct 2026): sábado 26 y domingo 27 no se ofrecen.
+  const semana = { '2030-10-25': { slots: ['2030-10-25T10:00:00-05:00'] }, '2030-10-26': { slots: ['2030-10-26T10:00:00-05:00'] }, '2030-10-27': { slots: ['2030-10-27T10:00:00-05:00'] } };
+  assert.deepEqual(ofrecidos(ctx, semana), ['2030-10-25T10:00:00-05:00'], 'solo el viernes');
+  const todos = { ...ctx, tenant: { ...ctx.tenant, parametros: { ...PARAMS, agenda: { ...PARAMS.agenda, dias_semana: undefined } } } };
+  assert.equal(ofrecidos(todos, semana).length, 3, 'sin dias_semana se aceptan todos los días');
+});
+
+test('agenda: las franjas del extractor salen de los parámetros', () => {
+  const ctx = ctxLucia({ contacto: { ...ctxBase().contacto, estado: 'calificado_pendiente_agendamiento' } });
+  const sistema = conv.solicitudExtraccion(ctx).messages[0].content;
+  assert.match(sistema, /"En la mañana" = desde 09:00 hasta 12:00; "En la tarde" = desde 12:00 hasta 17:00\./);
+  assert.doesNotMatch(sistema, /En la noche/, 'sin franja de noche: se atiende hasta las 5:00 p. m.');
 });
 
 test('agenda: la cita lleva para Javier el origen, la prioridad y las dudas', () => {
@@ -914,7 +927,7 @@ test('preferencia: pide otra opción el miércoles y se vuelven a buscar horario
 
   const body = {
     '2030-10-22': { slots: ['2030-10-22T10:00:00-05:00'] },
-    '2030-10-23': { slots: ['2030-10-23T09:00:00-05:00', '2030-10-23T11:00:00-05:00', '2030-10-23T15:00:00-05:00', '2030-10-23T17:00:00-05:00'] },
+    '2030-10-23': { slots: ['2030-10-23T09:00:00-05:00', '2030-10-23T11:00:00-05:00', '2030-10-23T15:00:00-05:00', '2030-10-23T16:00:00-05:00'] },
   };
   const h = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'), pref);
   assert.deepEqual(h.ofrecidos, body['2030-10-23'].slots, 'todas las opciones del miércoles, no solo 2');
@@ -922,7 +935,7 @@ test('preferencia: pide otra opción el miércoles y se vuelven a buscar horario
   assert.equal(h.dia, 'miércoles 23 de octubre');
 
   const tarde = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'), { ...pref, desde: '12:00' });
-  assert.deepEqual(tarde.ofrecidos, ['2030-10-23T15:00:00-05:00', '2030-10-23T17:00:00-05:00'], 'en la tarde');
+  assert.deepEqual(tarde.ofrecidos, ['2030-10-23T15:00:00-05:00', '2030-10-23T16:00:00-05:00'], 'en la tarde');
 
   const sinCupo = agenda.interpretarHorarios({ statusCode: 200, body }, ctx, ghl, new Date('2030-10-20T00:00:00Z'), { fecha: '2030-10-24', desde: null, hasta: null });
   assert.equal(sinCupo.motivo, 'preferencia_sin_cupo');
@@ -1203,4 +1216,35 @@ test('flujo: planificar pasa por guiarRespuesta y el envío lleva las opciones',
   const envio = await ejecutarCode('Preparar envío', redactado.json);
   assert.equal(envio.json.envio.cuerpo.type, 'interactive');
   assert.match(envio.json.envio.cuerpo.interactive.body.text, /1\. Martes 28 de octubre/);
+});
+
+test('propuesta: condiciones del guion como parámetros (2,5 %, exclusividad, salida, informe)', () => {
+  const lucia = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'prompts', 'lucia.md'), 'utf8');
+  const ctx = ctxLucia({ rol: { prompt_sistema: lucia.replace('{{campos}}', '- datos') }, evaluacion: { accion: 'presentar_propuesta' } });
+  const sistema = sistemaDe(conv.planificarRespuesta(ctx));
+  assert.match(sistema, /comisión del 5 %, que solo se paga si se concreta la venta/);
+  assert.match(sistema, /Si el propietario consigue por su cuenta al comprador durante la exclusividad, la comisión es del 2,5 %\./);
+  assert.match(sistema, /La exclusividad es por 6 meses/);
+  assert.match(sistema, /Al final del plazo, se revisan juntos los resultados.*se termina el acuerdo\./s);
+  assert.match(sistema, /no las enumeres al presentar la propuesta/, 'las condiciones son para dudas, no para la presentación');
+  assert.doesNotMatch(sistema, /dJavier/);
+  assert.match(sistema, /informe mensual/);
+  const sinCondiciones = { ...PARAMS, comercial: { ...PARAMS.comercial, propuesta: { exclusiva: true, comision_pct: 5 } } };
+  const otro = sistemaDe(conv.planificarRespuesta({ ...ctx, tenant: { ...ctx.tenant, parametros: sinCondiciones } }));
+  assert.doesNotMatch(otro, /2,5 %|exclusividad es por|se entrega un informe mensual/, 'en null no se mencionan');
+  assert.match(otro, /Condiciones aprobadas.*ninguna adicional: lo demás lo aclara Javier/);
+});
+
+test('propuesta con video: menciona los minutos configurados, y sin duración no', () => {
+  const conVideo = (minutos) => ({ ...PARAMS, comercial: { ...PARAMS.comercial, propuesta: { ...PARAMS.comercial.propuesta, video_url: 'https://x.co/v', video_minutos: minutos } } });
+  const rf = (minutos) => conv.planificarRespuesta(ctxLucia({
+    tenant: { ...ctxBase().tenant, parametros: conVideo(minutos) },
+    plantillas: plantillasDe('lucia'),
+    contacto: { ...ctxBase().contacto, datos: { nombre: 'Ana Gómez' } },
+    evaluacion: { resultado: 'calificado', accion: 'presentar_propuesta' },
+  })).respuesta_fija;
+  assert.match(rf(3).texto, /un video de 3 minutos con nuestro proceso/);
+  assert.match(rf(3).guia, /\{\{video_minutos\}\} minutos/, 'la duración es un dato exacto');
+  assert.match(rf(null).texto, /un video con nuestro proceso/);
+  assert.doesNotMatch(rf(null).texto, /\{\{/);
 });

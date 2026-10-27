@@ -32,7 +32,8 @@
  *   es menor o igual al umbral, y "baja" si no. Alta -> ofrecer agenda.
  *   Baja -> nutrir (no se agenda), salvo que `agenda_baja_parametro` apunte a
  *   un número de días: entonces baja también se agenda, a partir de esos días
- *   (prioridad B = agendar a futuro, decisión del 26 oct 2026).
+ *   (prioridad B = agendar a futuro, decisión del 26 oct 2026). Con
+ *   `agenda_baja_hasta_parametro`, un plazo mayor a esos meses se nutre.
  *   `baja_si` ({ campo, valor }) fuerza prioridad baja (p. ej. no dio el valor).
  *
  * Operadores: igual, distinto, en, no_en, mayor_o_igual, menor_o_igual,
@@ -295,7 +296,7 @@ function evaluarCalificacion({ criterios, requiereVerificacionDireccion, datos, 
   // 4. Prioridad: quien califica se agenda si es urgente; si no, se nutre o
   // se agenda a futuro, según el tenant.
   const prioridad = calcularPrioridad(criterios.prioridad, datosSeguros, parametros);
-  const diasBaja = diasAgendaBaja(criterios.prioridad, parametros);
+  const diasBaja = diasAgendaBaja(criterios.prioridad, datosSeguros, parametros);
   return {
     ...base,
     reglas,
@@ -306,11 +307,17 @@ function evaluarCalificacion({ criterios, requiereVerificacionDireccion, datos, 
   };
 }
 
-/** Días a partir de los cuales se agenda la prioridad baja, o null si se nutre. */
-function diasAgendaBaja(config, parametros) {
+/**
+ * Días a partir de los cuales se agenda la prioridad baja, o null si se nutre.
+ * Con `agenda_baja_hasta_parametro`, un plazo mayor a esos meses se nutre.
+ */
+function diasAgendaBaja(config, datos, parametros) {
   if (!config || !config.agenda_baja_parametro) return null;
   const dias = obtener(parametros || {}, config.agenda_baja_parametro);
-  return typeof dias === 'number' && dias >= 0 ? dias : null;
+  if (typeof dias !== 'number' || dias < 0) return null;
+  const tope = config.agenda_baja_hasta_parametro ? obtener(parametros || {}, config.agenda_baja_hasta_parametro) : null;
+  const plazo = aNumero(obtener(datos, config.campo));
+  return typeof tope === 'number' && plazo > tope ? null : dias;
 }
 
 function evaluarReglas(reglas, datos, parametros) {

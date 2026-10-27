@@ -61,7 +61,8 @@ Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https
 | D2 Valor de la propiedad | 26 oct 2026 | Mínimo 450.000.000 COP; menos → referencia a un colega con autorización, no se archiva. Desde 1.000.000.000 COP, respuesta premium |
 | D3 Opciones | 26 oct 2026 | Botones (hasta 3) o lista en WhatsApp; lista con emojis numerados en Instagram (`menu` en `roles/lucia.json`, horarios) |
 | D4 Documentos | 26 oct 2026 | Solo se menciona en la confirmación tener a mano escritura, certificado de tradición y predial; no se piden ni se reciben por chat |
-| D5 Prioridad B | 26 oct 2026 | Se agenda a futuro: horarios desde `prioridad.baja_agendar_desde_dias` (14, provisional). También es B quien no da el valor tras dos intentos (`valor_no_informado`) |
+| D5 Prioridad B | 26 oct 2026 | Se agenda a futuro: horarios desde `prioridad.baja_agendar_desde_dias` (14, provisional), con plazos de hasta `prioridad.baja_agendar_hasta_meses` (12, provisional); más allá, nutrición. También es B quien no da el valor tras dos intentos (`valor_no_informado`) |
+| Horario de llamadas | 27 oct 2026 | Lunes a viernes de 9:00 a. m. a 5:00 p. m. (`agenda.dias_semana`, `agenda.hora_minima`, `agenda.hora_maxima`). Reemplaza el horario de 9:00 a. m. a 9:00 p. m. del 17 oct |
 | D6 Permiso inicial | 26 oct 2026 | Lucía sigue pidiendo permiso antes de las preguntas |
 | D7 Datos en blanco del guion | 26 oct 2026 | Parámetros en `null` hasta que Javier los entregue; mientras tanto el agente no los menciona (ver pendientes) |
 | D8 Video | 26 oct 2026 | Con `comercial.propuesta.video_url`, la propuesta se envía con el video (`propuesta_video`); sin URL no se ofrece |
@@ -79,7 +80,7 @@ Ruta de lanzamiento paso a paso (quién, dónde, cómo comprobar): [guía](https
 | Política de duplicados en GHL | Etapa 3 | Teléfono, luego correo |
 | Etiquetas, etapas y campos en GHL | Etapa 3 | `agente-lucia`, `agente-sonia` |
 | Plantillas aprobadas por Meta | Etapa 2 | 14 en borrador en `entregables/Plantillas_Meta_JNdelT.xlsx`; en el sistema solo `pendiente_agenda` marcada como requerida. Faltan los envíos programados |
-| Datos del guion de Javier (D5, D7, D8) | Activar partes del guion | Días para agendar la prioridad B (14 provisional); condición del 2,5 % si el propietario consigue al comprador; plazo y cláusula de salida de la exclusividad; informe mensual; días de seguimiento tras "déjame pensarlo"; plazo para conseguir colega (48 o 72 h); días y franjas de llamadas; URL del video |
+| Datos del guion de Javier (D5, D7, D8) | Confirmar antes de activar el flujo | Todos son parámetros con valor provisional (27 oct, ver [configuracion.md](configuracion.md)): B desde 14 días y hasta 12 meses; 2,5 % si el propietario consigue al comprador durante la exclusividad; exclusividad de 6 meses; cláusula de salida; informe mensual; seguimiento a los 2 días; 72 h para conseguir colega; video de 3 minutos (falta la URL). **Lucía dice estas condiciones a los clientes**: Javier debe confirmarlas |
 | Referencia aceptada: ¿prometer contacto? | Aceptación | El guion dice "le paso tu información hoy mismo y se comunicará contigo"; el agente sigue sin prometer contacto hasta que haya colegas aliados confirmados |
 | Dirección no verificable: ¿archivar o revisión manual? | Etapa 3 | Se marca no calificado con motivo `direccion_no_verificada` |
 | Tiempos de conservación de datos | Antes de producción | Sin política de borrado |

@@ -73,6 +73,7 @@ function valoresPrompt(ctx) {
     argumento_exclusividad: comercial.argumento_exclusividad || '',
     ciudades_cobertura: listaHumana(((ctx.tenant.parametros || {}).cobertura || {}).ciudades || []) || 'su zona de cobertura',
     propuesta: textoPropuesta(comercial.propuesta, comercial.asesor || 'el asesor'),
+    condiciones_propuesta: condicionesPropuesta(comercial.propuesta).replace(/el asesor/g, comercial.asesor || 'el asesor'),
     valor_minimo: millones(((ctx.tenant.parametros || {}).propietarios || {}).valor_minimo_cop),
     valor_premium: millones(((ctx.tenant.parametros || {}).propietarios || {}).valor_premium_cop),
   };
@@ -105,14 +106,26 @@ function textoPropuesta(p, asesor) {
     partes.push(`con una comisión del ${p.comision_pct} %${p.comision_solo_si_vende ? ', que solo se paga si se concreta la venta' : ''}`);
   }
   const beneficios = (p.beneficios || []).filter(Boolean);
-  // Condiciones que Javier aún no confirmó quedan en null y no se mencionan.
-  const extra = [
-    typeof p.comision_comprador_propio_pct === 'number' ? `Si el propietario consigue al comprador, la comisión es del ${p.comision_comprador_propio_pct} %.` : null,
+  return `${partes.join(' ') || `${asesor} explica sus condiciones en la llamada`}.${beneficios.length ? ` Beneficios aprobados: ${beneficios.join('; ')}.` : ''}`;
+}
+
+const frase = (t) => { const x = String(t).trim(); return `${x.charAt(0).toUpperCase()}${x.slice(1)}${/[.!?]$/.test(x) ? '' : '.'}`; };
+
+/**
+ * Condiciones aprobadas para responder dudas (no van en la presentación de la
+ * propuesta). Las que están en null en los parámetros no se mencionan.
+ */
+function condicionesPropuesta(p) {
+  if (!p) return 'ninguna adicional: lo demás lo aclara el asesor.';
+  const c = [
+    typeof p.comision_comprador_propio_pct === 'number'
+      ? `${frase(p.comision_comprador_propio_condicion || 'si el propietario consigue al comprador').replace(/\.$/, '')}, la comisión es del ${String(p.comision_comprador_propio_pct).replace('.', ',')} %.`
+      : null,
     typeof p.plazo_exclusividad_meses === 'number' ? `La exclusividad es por ${p.plazo_exclusividad_meses} meses.` : null,
-    p.clausula_salida ? `Al final del plazo: ${p.clausula_salida}` : null,
-    p.informe_mensual ? 'Incluye un informe mensual con los resultados de la gestión.' : null,
+    p.clausula_salida ? `Al final del plazo, ${String(p.clausula_salida).trim().replace(/\.$/, '')}.` : null,
+    p.informe_mensual ? 'Durante la exclusividad se entrega un informe mensual con los resultados de la gestión.' : null,
   ].filter(Boolean);
-  return `${partes.join(' ') || `${asesor} explica sus condiciones en la llamada`}.${extra.length ? ` ${extra.join(' ')}` : ''}${beneficios.length ? ` Beneficios aprobados: ${beneficios.join('; ')}.` : ''}`;
+  return c.length ? c.join(' ') : 'ninguna adicional: lo demás lo aclara el asesor.';
 }
 
 function mensajesHistorial(ctx, { soloCasoActual = false } = {}) {
@@ -201,6 +214,18 @@ function hoyTexto(ctx) {
   return `${largo} (${iso})`;
 }
 
+const NOMBRE_FRANJA = { manana: 'En la mañana', tarde: 'En la tarde', noche: 'En la noche' };
+
+/** Franjas del día para el extractor (parametros.agenda.franjas: { manana: ["09:00", "12:00"], ... }). */
+function textoFranjas(ctx) {
+  const f = (((ctx.tenant.parametros || {}).agenda) || {}).franjas
+    || { manana: ['09:00', '12:00'], tarde: ['12:00', '18:00'], noche: ['18:00', null] };
+  return Object.entries(f)
+    .filter(([, r]) => Array.isArray(r))
+    .map(([k, [desde, hasta]]) => `"${(NOMBRE_FRANJA[k] || k)}" = desde ${desde}${hasta ? ` hasta ${hasta}` : ''}`)
+    .join('; ') + '.';
+}
+
 /** preferencia_horario del extractor, validada: { fecha, desde, hasta } o null. */
 function preferenciaValida(v) {
   if (!v || typeof v !== 'object') return null;
@@ -257,7 +282,7 @@ function solicitudExtraccion(ctx) {
       `Hoy es ${hoyTexto(ctx)}.`,
       'Si en su ÚLTIMO mensaje la persona no elige un horario de la lista sino que pide otro día u otra hora (p. ej. "otra opción el miércoles", "el viernes en la tarde", "después de las 3"),',
       'agrega "preferencia_horario": {"fecha": "AAAA-MM-DD" o null, "desde": "HH:MM" o null, "hasta": "HH:MM" o null}, en hora de 24 h.',
-      '"En la mañana" = desde 09:00 hasta 12:00; "en la tarde" = desde 12:00 hasta 18:00; "en la noche" = desde 18:00. Un día de la semana es el próximo con ese nombre.',
+      `${textoFranjas(ctx)} Un día de la semana es el próximo con ese nombre.`,
     ] : []),
     ...(conHorarios ? [
       '',
@@ -432,7 +457,14 @@ function planPropuesta(ctx, ev, fija) {
   // Con el video del proceso (parametros.comercial.propuesta.video_url), la propuesta lo incluye.
   const video = comercial.propuesta.video_url;
   const clave = video && /^https:\/\//.test(video) && p.propuesta_video ? 'propuesta_video' : 'propuesta';
-  const plan = fija(clave, [], { nombre, comision_pct: String(pct).replace('.', ','), video_url: video });
+  const minutos = comercial.propuesta.video_minutos;
+  const plan = fija(clave, [], { nombre, comision_pct: String(pct).replace('.', ','), video_url: video, video_minutos: typeof minutos === 'number' ? String(minutos) : null });
+  // Sin duración configurada, la frase del video no la menciona.
+  if (typeof minutos !== 'number') {
+    const sinMinutos = (t) => t.replace(/ de \{\{video_minutos\}\} minutos/, '');
+    plan.respuesta_fija.texto = sinMinutos(plan.respuesta_fija.texto);
+    plan.respuesta_fija.guia = sinMinutos(plan.respuesta_fija.guia);
+  }
   if (!nombre) {
     const sinNombre = (t) => t.replace(/,\s*\{\{nombre\}\}/, '');
     plan.respuesta_fija.texto = sinNombre(plan.respuesta_fija.texto);
@@ -567,12 +599,12 @@ function instruccionPropuesta(ctx) {
   return [
     'La persona cumple los criterios. Antes de ofrecer horarios debe entender cómo trabaja el asesor y decir que quiere continuar.',
     `Si aún no lo explicaste en esta conversación, explícalo en dos frases: ${v.propuesta} No garantices precio ni plazo de venta.`,
-    'Si ya lo explicaste, responde sus dudas solo con esa información; si algo requiere el criterio del asesor, di que lo registras y que él lo aclarará.',
+    `Si ya lo explicaste, responde sus dudas solo con esa información y con estas condiciones aprobadas: ${v.condiciones_propuesta} Si algo requiere el criterio del asesor, di que lo registras y que él lo aclarará.`,
     'No menciones beneficios que no estén en la propuesta ni comentes qué está o no aprobado.',
     datos.solicita_acuerdo === true ? 'Pidió el borrador del acuerdo: no está disponible por este medio; dile que registras la solicitud y que el asesor lo revisa con ella.' : null,
     'Termina con una sola pregunta: "¿Hay algún punto que quieras aclarar antes de continuar?" o, si ya resolviste sus dudas, si desea continuar para agendar una llamada con el asesor.',
     'No ofrezcas horarios en este mensaje.',
-  ].filter(Boolean).join(' ').replace(/el asesor/g, v.asesor);
+  ].filter(Boolean).join(' ').replace(/\bdel asesor\b/g, `de ${v.asesor}`).replace(/\bel asesor\b/g, v.asesor);
 }
 
 // Mientras falten datos el agente no adelanta la agenda: así no da por terminada
@@ -744,7 +776,7 @@ function solicitudRedaccion(ctx) {
 // Datos que el LLM no escribe: viajan como marcadores {{clave}} y los rellena el código.
 const DATOS_EXACTOS = new Set([
   'horarios_disponibles', 'horarios_alternativos', 'fecha', 'hora', 'zona_horaria', 'dia',
-  'modalidad', 'comision_pct', 'enlace_agenda', 'video_url',
+  'modalidad', 'comision_pct', 'enlace_agenda', 'video_url', 'video_minutos',
 ]);
 
 /** Valores de los datos exactos (true) o de los demás (false); sin nulos. */

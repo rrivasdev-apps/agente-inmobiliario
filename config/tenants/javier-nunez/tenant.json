@@ -25,7 +25,8 @@
     },
     "prioridad": {
       "alta_hasta_meses": 3,
-      "baja_agendar_desde_dias": 14
+      "baja_agendar_desde_dias": 14,
+      "baja_agendar_hasta_meses": 12
     },
     "compra": {
       "presupuesto_minimo_cop": 200000000
@@ -50,7 +51,12 @@
     },
     "agenda": {
       "hora_minima": "09:00",
-      "hora_maxima": "21:00",
+      "hora_maxima": "17:00",
+      "dias_semana": ["lunes", "martes", "miercoles", "jueves", "viernes"],
+      "franjas": {
+        "manana": ["09:00", "12:00"],
+        "tarde": ["12:00", "17:00"]
+      },
       "encuentros": {
         "llamada": { "nombre": "tu llamada", "quien_contacta": "{{asesor}} te llamará a este número." },
         "videollamada": { "nombre": "tu videollamada", "quien_contacta": "{{asesor}} te compartirá el enlace de la videollamada por este medio." },
@@ -65,19 +71,20 @@
         "exclusiva": true,
         "comision_pct": 5,
         "comision_solo_si_vende": true,
-        "comision_comprador_propio_pct": null,
-        "plazo_exclusividad_meses": null,
-        "clausula_salida": null,
-        "informe_mensual": null,
+        "comision_comprador_propio_pct": 2.5,
+        "comision_comprador_propio_condicion": "si el propietario consigue por su cuenta al comprador durante la exclusividad",
+        "plazo_exclusividad_meses": 6,
+        "clausula_salida": "se revisan juntos los resultados y el propietario decide si continúa, se ajusta la estrategia o se termina el acuerdo",
+        "informe_mensual": true,
         "beneficios": [],
         "video_url": null,
-        "video_minutos": null,
+        "video_minutos": 3,
         "acuerdo_url": null
       }
     },
     "seguimiento": {
-      "dias_tras_pensarlo": null,
-      "horas_para_aliado": null
+      "dias_tras_pensarlo": 2,
+      "horas_para_aliado": 72
     }
   },
   "canales": [

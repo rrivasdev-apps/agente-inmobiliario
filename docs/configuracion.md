@@ -11,15 +11,26 @@ Todo umbral de negocio vive en `config/tenants/<tenant>/tenant.json` → `parame
 | `propietarios.valor_premium_cop` | `1000000000` | Desde este valor Lucía responde con el mensaje premium del guion de Javier. Solo cambia la respuesta, no la calificación. |
 | `prioridad.alta_hasta_meses` | `3` | Quien califica y quiere concretar en ese plazo o menos es prioridad alta (se agenda ya). Más: prioridad baja. |
 | `prioridad.baja_agendar_desde_dias` | `14` (provisional) | Prioridad B = agendar a futuro: los horarios se ofrecen a partir de estos días (`calificado_futuro`). `null` = la prioridad baja se nutre sin cita (`nutricion`), como antes. Solo lo usan los roles con `agenda_baja_parametro` (Lucía). |
+| `prioridad.baja_agendar_hasta_meses` | `12` (provisional) | Tope de la prioridad B: con un plazo mayor (p. ej. "en 2 años") la prioridad baja se nutre sin cita. "Más de 6 meses" y "aún no lo tengo definido" se registran como 12, así que se agendan. `null` = toda la prioridad baja se agenda a futuro. |
 | `compra.presupuesto_minimo_cop` | `200000000` | Presupuesto mínimo para compradores. `null` = sin mínimo. |
 | `arriendo.canon_minimo_cop` | `null` | Canon mensual mínimo para quien busca arriendo. `null` = sin mínimo. |
 | `dossier.lucia` / `dossier.sonia` | `null` | `{ "url": "https://…/dossier.pdf", "nombre_archivo": "JNdelT.pdf" }`: se envía automáticamente a prioridad baja (archivo en WhatsApp, enlace en Instagram). La URL debe ser pública. |
 | `nutricion.incluir_no_calificados` | `true` | Los no calificados reciben la plantilla `no_calificado_nutricion` (y el dossier, si existe) en lugar de solo "no cumples las condiciones". |
 | `conversacion.cierre_inactividad_horas` | `48` | Horas sin mensajes tras las que se cierra la conversación. Si la persona escribe después, el agente la saluda por su nombre, le recuerda lo pendiente (cita, agendamiento, datos) y pregunta en qué la puede ayudar. |
 | `comercial.asesor_nombre_completo` | `"Javier Núñez del Toro"` | A nombre de quién se presentan Lucía y Sonia ("asistente virtual de Javier Núñez del Toro"). |
-| `comercial.propuesta` | exclusiva, comisión 5 % solo si se vende | Lo que Lucía explica antes de agendar. Vacíos hasta que Javier los confirme (el agente no los menciona mientras estén en `null`): `comision_comprador_propio_pct` (si el propietario consigue al comprador), `plazo_exclusividad_meses`, `clausula_salida`, `informe_mensual`, `beneficios`, `video_url` y `acuerdo_url`. Con `video_url`, la propuesta se envía con el video (`propuesta_video`). |
-| `seguimiento.dias_tras_pensarlo` / `seguimiento.horas_para_aliado` | `null` | Para los envíos programados del guion (escribir tras "déjame pensarlo"; avisar si no hubo colega aliado). Aún no se usan: faltan los envíos programados. |
-| `agenda.hora_minima` / `agenda.hora_maxima` | `"09:00"` / `"21:00"` | Horario de atención (hora de Bogotá), además de la disponibilidad del calendario. El encuentro debe terminar a la hora de cierre (si no hay duración configurada, debe empezar antes). |
+| `comercial.propuesta.exclusiva` / `comision_pct` / `comision_solo_si_vende` | `true` / `5` / `true` | Lo que Lucía explica antes de agendar: exclusiva, comisión del 5 % que solo se paga si se concreta la venta. |
+| `comercial.propuesta.comision_comprador_propio_pct` | `2.5` (provisional) | Comisión si el propietario consigue al comprador. Lucía la usa solo para responder dudas. `null` = no se menciona. |
+| `comercial.propuesta.comision_comprador_propio_condicion` | "si el propietario consigue por su cuenta al comprador durante la exclusividad" (provisional) | Condición de esa comisión, tal como la dice Lucía. |
+| `comercial.propuesta.plazo_exclusividad_meses` | `6` (provisional) | Duración de la exclusividad. `null` = Lucía dice que lo aclara Javier. |
+| `comercial.propuesta.clausula_salida` | "se revisan juntos los resultados y el propietario decide si continúa, se ajusta la estrategia o se termina el acuerdo" (provisional) | Qué pasa al final del plazo. `null` = lo aclara Javier. |
+| `comercial.propuesta.informe_mensual` | `true` (provisional) | Si se entrega un informe mensual de la gestión. `null` o `false` = no se menciona. |
+| `comercial.propuesta.video_url` / `video_minutos` | `null` / `3` | Con URL, la propuesta se envía con el video (`propuesta_video`) y menciona los minutos; sin URL no se ofrece. |
+| `comercial.propuesta.beneficios` / `acuerdo_url` | `[]` / `null` | Beneficios aprobados y borrador del acuerdo; vacíos, no se mencionan. |
+| `seguimiento.dias_tras_pensarlo` | `2` (provisional) | Días para escribir tras "déjame pensarlo". Aún no se usa: Lucía no lo promete hasta que existan los envíos programados. |
+| `seguimiento.horas_para_aliado` | `72` (provisional) | Plazo para conseguir un colega aliado antes de avisarle a la persona. Aún no se usa, por la misma razón. |
+| `agenda.hora_minima` / `agenda.hora_maxima` | `"09:00"` / `"17:00"` | Horario de llamadas (hora de Bogotá, 27 oct 2026), además de la disponibilidad del calendario. El encuentro debe terminar a la hora de cierre (si no hay duración configurada, debe empezar antes). |
+| `agenda.dias_semana` | lunes a viernes | Días en que se ofrecen llamadas (`lunes` … `domingo`, sin tildes). Sin el parámetro, todos los días. |
+| `agenda.franjas` | mañana 09:00–12:00, tarde 12:00–17:00 | Qué significa "en la mañana" o "en la tarde" cuando la persona pide otro horario. Claves: `manana`, `tarde`, `noche`. |
 | `agenda.encuentros` | llamada, videollamada, presencial | Cómo se nombra cada modalidad en la confirmación y quién contacta a quién. **Por validar con Javier.** |
 | `comercial.asesor` | `"Javier"` | Nombre con el que el agente se refiere al asesor en las objeciones ("eso lo revisa Javier en la reunión"). |
 | `comercial.argumento_exclusividad` | texto | Instrucción para responder "ya tengo agencia o asesor". |
@@ -34,7 +45,7 @@ Las reglas de cada rol (`roles/*.json` → `criterios`) usan estos parámetros c
 1. **Datos obligatorios**: si falta alguno, se pide (los de compra o arriendo según `operacion`).
 2. **Dirección** (solo Lucía): verificada con Google Maps.
 3. **Criterios mínimos**: todas las reglas del rol. Si alguna falla: `no_calificado` con motivo.
-4. **Prioridad**: plazo ≤ `prioridad.alta_hasta_meses` → alta → horarios y cita en GoHighLevel. Si no → baja: con `prioridad.baja_agendar_desde_dias` (Lucía) se agenda a partir de esos días; sin él (Sonia), plantilla `prioridad_baja` (+ dossier si existe), estado `nutricion`, sin cita. Si la persona vuelve con urgencia, pasa a agendar.
+4. **Prioridad**: plazo ≤ `prioridad.alta_hasta_meses` → alta → horarios y cita en GoHighLevel. Si no → baja: con `prioridad.baja_agendar_desde_dias` (Lucía) se agenda a partir de esos días, salvo que el plazo supere `prioridad.baja_agendar_hasta_meses`; sin él (Sonia), plantilla `prioridad_baja` (+ dossier si existe), estado `nutricion`, sin cita. Si la persona vuelve con urgencia, pasa a agendar.
 
 Condiciones de los criterios: `si` aplica una regla o campo solo con cierto valor de otro dato; `salvo`, al revés (el valor de la propiedad no se exige ni se evalúa con `valor_no_informado`). `prioridad.baja_si` fuerza prioridad baja.
 
@@ -73,7 +84,7 @@ El extractor de datos decide cuándo es otra propiedad y cuándo pide la misma r
 2. **Orden de los datos:** ciudad primero, luego nombre completo (si solo da el primer nombre, lo pide completo), operación, tipo de inmueble, barrio, estado del inmueble (y vencimiento del arriendo o disponibilidad para visitas, según el caso), si ya está publicado, plazo, valor, relación con el inmueble, otros decisores y la dirección al final (guion de Javier, 26 oct). No pide el correo.
 3. **Cobertura temprana:** las reglas marcadas `"temprana": true` (ciudad, barrio, valor y tipo de inmueble) se aplican apenas se conoce su dato. Fuera de la ciudad, en un barrio que no se atiende o con un valor menor al mínimo no se sigue calificando: se envía `fuera_cobertura`, `fuera_cobertura_barrio` o `referencia_valor`, se pide autorización para una posible referencia (`autoriza_referencia`) y no se promete ningún contacto. El reporte semanal muestra la autorización como "Autorizada (pendiente)".
 4. **Propuesta antes de agendar:** quien califica con prioridad alta primero escucha cómo trabaja Javier (`comercial.propuesta`) y se le pregunta si tiene dudas. Los horarios se ofrecen solo cuando dice que quiere continuar (`desea_continuar`). Las dudas (`dudas_propuesta`) y la solicitud del borrador del acuerdo (`solicita_acuerdo`) quedan registradas y van en la descripción de la cita.
-5. **Agenda:** solo horarios desde `agenda.hora_minima`. La confirmación indica fecha, hora de Colombia, modalidad y quién contacta a quién. La cita lleva para Javier el origen, la prioridad y los datos del caso.
+5. **Agenda:** solo horarios de `agenda.dias_semana`, entre `agenda.hora_minima` y `agenda.hora_maxima`. La confirmación indica fecha, hora de Colombia, modalidad y quién contacta a quién. La cita lleva para Javier el origen, la prioridad y los datos del caso.
 6. **Cambio de asistente:** si quien habla con Lucía quiere comprar (o con Sonia quiere vender), pasa a la otra en un caso nuevo, con la misma ficha de contacto.
 
 ## Tablas de configuración (validación del 17 oct 2026)

@@ -40,7 +40,7 @@
       {"id": "valor_minimo", "campo": "valor_estimado_cop", "operador": "mayor_o_igual", "parametro": "propietarios.valor_minimo_cop", "si": {"campo": "operacion", "valor": "venta"}, "salvo": {"campo": "valor_no_informado", "valor": true}, "temprana": true, "motivo": "El valor de la propiedad está por debajo del rango que se atiende directamente"},
       {"id": "tipo_inmueble", "campo": "tipo_inmueble", "operador": "en", "parametro": "cobertura.tipos_inmueble", "motivo": "El tipo de inmueble no se atiende", "temprana": true}
     ],
-    "prioridad": {"campo": "plazo_meses", "parametro": "prioridad.alta_hasta_meses", "baja_si": {"campo": "valor_no_informado", "valor": true}, "agenda_baja_parametro": "prioridad.baja_agendar_desde_dias"}
+    "prioridad": {"campo": "plazo_meses", "parametro": "prioridad.alta_hasta_meses", "baja_si": {"campo": "valor_no_informado", "valor": true}, "agenda_baja_parametro": "prioridad.baja_agendar_desde_dias", "agenda_baja_hasta_parametro": "prioridad.baja_agendar_hasta_meses"}
   },
   "pendientes": [
     "Ciudades con posibilidad de referencia y agentes disponibles (hoy ninguno confirmado; Chía y La Calera no están aprobadas)."

@@ -144,18 +144,26 @@ const minutosDe = (hhmm) => {
 
 /**
  * Horario de atención (parametros.agenda.hora_minima / hora_maxima, "HH:MM" en
- * la zona del tenant): no se ofrecen horarios fuera de él aunque el calendario
- * los tenga libres. hora_maxima es el cierre: el encuentro debe terminar a esa
+ * la zona del tenant, y dias_semana): no se ofrecen horarios fuera de él aunque
+ * el calendario los tenga libres. hora_maxima es el cierre: el encuentro debe terminar a esa
  * hora (con la duración configurada; sin duración, debe empezar antes).
  */
+// Días de atención (parametros.agenda.dias_semana), sin tildes: "lunes" … "domingo".
+const DIAS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const sinTildes = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
 function dentroDelHorario(ctx) {
   const a = ((ctx.tenant.parametros || {}).agenda) || {};
   const min = minutosDe(a.hora_minima);
   const max = minutosDe(a.hora_maxima);
-  if (min === null && max === null) return () => true;
+  const dias = Array.isArray(a.dias_semana) && a.dias_semana.length ? new Set(a.dias_semana.map(sinTildes)) : null;
+  if (min === null && max === null && !dias) return () => true;
   const duracion = Number(config(ctx, 'calendario').duracion_minutos) || 0;
   const formato = new Intl.DateTimeFormat('en-GB', { timeZone: ctx.tenant.zona_horaria, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const diaSemana = new Intl.DateTimeFormat('en-US', { timeZone: ctx.tenant.zona_horaria, weekday: 'short' });
+  const CORTOS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   return (iso) => {
+    if (dias && !dias.has(DIAS[CORTOS.indexOf(diaSemana.format(new Date(iso)))])) return false;
     const [h, m] = formato.format(new Date(iso)).split(':').map(Number);
     const t = h * 60 + m;
     return (min === null || t >= min) && (max === null || (duracion ? t + duracion <= max : t < max));

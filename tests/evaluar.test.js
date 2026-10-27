@@ -316,3 +316,19 @@ test('Lucía: tipos atendidos y relaciones válidas salen de los parámetros', (
   assert.equal(local.codigo_motivo, 'tipo_inmueble');
   assert.equal(evaluarLucia({ ...propietario, relacion_inmueble: 'familiar' }, { resultado: 'verificada' }).codigo_motivo, 'relacion_valida');
 });
+
+test('prioridad B: hasta prioridad.baja_agendar_hasta_meses se agenda; un plazo mayor se nutre', () => {
+  const v = { resultado: 'verificada' };
+  assert.equal(evaluarLucia({ ...propietario, plazo_meses: 12 }, v).accion, 'ofrecer_agenda', '"más de 6 meses" o "no definido" = 12: B');
+  const lejos = evaluarLucia({ ...propietario, plazo_meses: 24 }, v);
+  assert.equal(lejos.prioridad, 'baja');
+  assert.equal(lejos.accion, 'nutrir');
+  const sinTope = evaluarCalificacion({
+    criterios: lucia.criterios,
+    requiereVerificacionDireccion: true,
+    datos: { ...propietario, plazo_meses: 24 },
+    verificacionDireccion: v,
+    parametros: { ...parametros, prioridad: { ...parametros.prioridad, baja_agendar_hasta_meses: null } },
+  });
+  assert.equal(sinTope.accion, 'ofrecer_agenda', 'sin tope, toda la prioridad baja es B');
+});
