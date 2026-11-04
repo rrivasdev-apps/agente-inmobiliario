@@ -41,6 +41,27 @@ npm run n8n:check   # verifica que el flujo está actualizado
 
 `test:db` requiere PostgreSQL 15+ instalado localmente (`initdb`, `pg_ctl`, `psql`).
 
+## Trabajar en local (macOS)
+
+Requisitos: Git, Node 20 o superior y, para `test:db`, PostgreSQL 15 o superior. No hay dependencias de npm: no hace falta `npm install`.
+
+```bash
+cd "/Volumes/DatosRERS/Dev/Projects Claude"
+git clone -b main https://github.com/rrivasdev-apps/agente-inmobiliario.git agente_inmuebles
+cd agente_inmuebles
+npm test
+```
+
+Para `test:db` en Mac (el script busca PostgreSQL en la ruta de Linux, así que se le indica la de Homebrew):
+
+```bash
+brew install postgresql@16
+export PATH="$(brew --prefix postgresql@16)/bin:$PATH"
+PG_BIN="$(brew --prefix postgresql@16)/bin" npm run test:db
+```
+
+Las credenciales no están en el repositorio: viven en n8n (Credentials) y en Supabase Vault. Publicar cambios en Supabase y n8n está descrito en [docs/n8n.md](docs/n8n.md#publicar-cambios).
+
 ## Documentación
 
 - [Arquitectura](docs/arquitectura.md)
