@@ -1270,3 +1270,18 @@ test('vacaciones: al ofrecer horarios se usa calificado_vacaciones con la fecha 
   assert.match(rf.texto, /Javier está de vacaciones y retoma las llamadas el martes 12 de enero/);
   assert.equal(conv.planificarRespuesta(ctx('2026-12-01T15:00:00Z')).respuesta_fija.plantilla, 'calificado', 'fuera de vacaciones, la plantilla normal');
 });
+
+test('hora local: el saludo y la despedida corresponden al momento del día (4 nov 2026)', () => {
+  // 04:17 UTC = 11:17 p. m. en Bogotá.
+  const noche = ctxLucia({ ahora: '2026-11-05T04:17:00Z', contacto: { ...ctxBase().contacto, datos: { acepta_preguntas: false } } });
+  const libre = sistemaDe(conv.planificarRespuesta(noche));
+  assert.match(libre, /Hora local de la persona: 11:17 p\. m\. \(es de noche\)/);
+  assert.match(libre, /no le desees "un buen día"/);
+  const guiada = { ...noche, contacto: ctxBase().contacto, plantillas: plantillasDe('lucia'),
+    resultado_agenda: { tipo: 'ofrecidos', texto: '1. Martes 28 de octubre, 10:00 a. m.' } };
+  assert.match(sistemaDe(conv.guiarRespuesta(guiada, conv.planificarRespuesta(guiada))), /es de noche/, 'también en la redacción guiada');
+  const manana = sistemaDe(conv.planificarRespuesta({ ...noche, ahora: '2026-11-05T14:05:00Z' }));
+  assert.match(manana, /9:05 a\. m\. \(es de mañana\)/);
+  assert.doesNotMatch(manana, /buen día"\)/);
+  assert.match(sistemaDe(conv.planificarRespuesta({ ...noche, ahora: '2026-11-05T20:00:00Z' })), /\(es de tarde\)/);
+});

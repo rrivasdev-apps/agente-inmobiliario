@@ -225,6 +225,19 @@ function hoyTexto(ctx) {
   return `${largo} (${iso})`;
 }
 
+/**
+ * Hora local del tenant y momento del día, para que el saludo y la despedida
+ * correspondan a la hora (a las 11 p. m. no se desea "un buen día"). `ctx.ahora` permite fijarla.
+ */
+function momentoDelDia(ctx) {
+  const ahora = new Date(ctx.ahora || Date.now());
+  const zona = ctx.tenant.zona_horaria;
+  const hora = Number(new Intl.DateTimeFormat('en-US', { timeZone: zona, hour: 'numeric', hourCycle: 'h23' }).format(ahora));
+  const texto = new Intl.DateTimeFormat('es-CO', { timeZone: zona, hour: 'numeric', minute: '2-digit', hour12: true }).format(ahora).replace(/[  ]/g, ' ');
+  const momento = hora >= 5 && hora < 12 ? 'mañana' : hora >= 12 && hora < 19 ? 'tarde' : 'noche';
+  return `- Hora local de la persona: ${texto} (es de ${momento}). Si saludas o te despides, que corresponda a ese momento del día${momento === 'noche' ? ' (por ejemplo, no le desees "un buen día")' : ''}. No hace falta mencionar la hora.`;
+}
+
 const NOMBRE_FRANJA = { manana: 'En la mañana', tarde: 'En la tarde', noche: 'En la noche' };
 
 /** Franjas del día para el extractor (parametros.agenda.franjas: { manana: ["09:00", "12:00"], ... }). */
@@ -764,6 +777,7 @@ function solicitudRedaccion(ctx) {
       ? `- Dirígete a la persona como "${nombre}". No le preguntes su nombre.`
       : '- Aún no sabes cómo se llama la persona: si el siguiente dato no es otro, pregúntale su nombre de forma natural.',
     `- Datos registrados: ${JSON.stringify(ctx.contacto.datos || {})}`,
+    momentoDelDia(ctx),
     ctx.oportunidad && ctx.oportunidad.rol_anterior && ctx.oportunidad.rol_anterior !== ctx.rol.codigo
       ? `- La persona venía hablando con otra asistente sobre otra necesidad y ahora la atiendes tú. Si aún no lo hiciste, preséntate en una frase como ${ctx.rol.nombre_visible}, asistente virtual de ${representado(ctx)}, y continúa con el siguiente paso.`
       : null,
@@ -832,6 +846,7 @@ function solicitudGuia(ctx, rf) {
       ? `- Escribe cada marcador (${[...new Set(marcadores(rf.guia))].join(', ')}) tal cual, una vez y en el lugar que tenga sentido: el sistema lo reemplaza por el dato exacto. No escribas tú esos datos.`
       : null,
     nombre ? `- Si te diriges a la persona, llámala "${nombre}".` : null,
+    momentoDelDia(ctx),
     'Responde solo con el texto del mensaje, sin comillas ni explicaciones.',
   ].filter(Boolean).join('\n');
   return {
