@@ -1,0 +1,220 @@
+{
+  "name": "Agente inmobiliario: recordatorio de prioridad B",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 7,
+              "triggerAtMinute": 40
+            }
+          ]
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000301",
+      "name": "Cada día 7:40",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "a91e0000-0000-4000-8000-000000000302",
+      "name": "Ejecutar ahora",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.recordatorios_prioridad_b() as r",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000303",
+      "name": "Recordatorios por tenant",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        240,
+        100
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// GENERADO por scripts/generar-n8n.js desde src/. Editar allí, no aquí.\nconst recordatorios = (function () {\n'use strict';\n\n/**\n * Recordatorio diario de prioridad B (reunión del 27 oct 2026): a partir de una\n * fila de app.recordatorios_prioridad_b(), arma el correo a Javier con los\n * propietarios cuya fecha estimada de venta se acerca, para que los contacte él.\n * Va por correo para no gastar mensajes de la API de WhatsApp.\n */\n\nfunction escapar(texto) {\n  return String(texto ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\n}\n\nfunction fecha(iso, zona) {\n  return new Intl.DateTimeFormat('es-CO', { timeZone: zona, day: 'numeric', month: 'short', year: 'numeric' })\n    .format(new Date(iso)).replace(/[  ]/g, ' ');\n}\n\nfunction millones(cop) {\n  const n = Number(cop);\n  return Number.isFinite(n) && n > 0 ? `${new Intl.NumberFormat('es-CO').format(Math.round(n / 1e6))} M` : 'No lo dio';\n}\n\nconst COLUMNAS = [\n  { titulo: 'Nombre', valor: (f) => f.nombre || '—' },\n  { titulo: 'Teléfono', valor: (f) => f.telefono || '—' },\n  { titulo: 'Canal', valor: (f) => f.canal || '—' },\n  { titulo: 'Barrio', valor: (f) => f.barrio || '—' },\n  { titulo: 'Inmueble', valor: (f) => f.tipo_inmueble || '—' },\n  { titulo: 'Valor estimado', valor: (f) => millones(f.valor_estimado_cop) },\n  { titulo: 'Plazo que dio (meses)', valor: (f) => f.plazo_meses ?? '—' },\n  { titulo: 'Conversó el', valor: (f, z) => fecha(f.en_nutricion_desde, z) },\n  { titulo: 'Fecha estimada de venta', valor: (f, z) => fecha(f.fecha_estimada, z) },\n];\n\n/**\n * @param {object} r  fila de app.recordatorios_prioridad_b()\n * @returns {{ enviar: boolean, tenant_id: string, para: string, asunto: string, html: string, contactos_b64: string }}\n */\nfunction armarRecordatorio(r) {\n  const zona = (r.tenant && r.tenant.zona_horaria) || 'America/Bogota';\n  const destinatarios = (r.destinatarios || []).filter((d) => typeof d === 'string' && d.includes('@'));\n  const contactos = r.contactos || [];\n  const encabezado = COLUMNAS.map((c) => `<th style=\"text-align:left;padding:4px 8px;border-bottom:1px solid #ccc\">${escapar(c.titulo)}</th>`).join('');\n  const filas = contactos.map((f) => `<tr>${COLUMNAS.map((c) => `<td style=\"padding:4px 8px;border-bottom:1px solid #eee\">${escapar(c.valor(f, zona))}</td>`).join('')}</tr>`).join('');\n  const html = [\n    '<h2>Propietarios para llamar: se acerca su fecha de venta</h2>',\n    `<p>${escapar(r.tenant && r.tenant.nombre)}. Estos propietarios conversaron con Lucía y dijeron que aún no tenían prisa (prioridad B). Se acerca la fecha en que pensaban vender: es buen momento para escribirles o llamarlos.</p>`,\n    `<table style=\"border-collapse:collapse;font-size:14px\"><thead><tr>${encabezado}</tr></thead><tbody>${filas}</tbody></table>`,\n  ].join('\\n');\n  return {\n    enviar: destinatarios.length > 0 && contactos.length > 0,\n    tenant_id: r.tenant && r.tenant.id,\n    para: destinatarios.join(','),\n    asunto: `Prioridad B: ${contactos.length} ${contactos.length === 1 ? 'propietario para contactar' : 'propietarios para contactar'}`,\n    html,\n    contactos_b64: Buffer.from(JSON.stringify(contactos.map((c) => c.contacto_id)), 'utf8').toString('base64'),\n  };\n}\n\nreturn { armarRecordatorio };\n})();\nconst b64 = (v) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');\n\nreturn { json: recordatorios.armarRecordatorio($json.r) };\n"
+      },
+      "id": "a91e0000-0000-4000-8000-000000000304",
+      "name": "Armar correo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a91e0000-0000-4000-8000-000000000305",
+              "leftValue": "={{ $json.enviar === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a91e0000-0000-4000-8000-000000000306",
+      "name": "¿Hay a quién avisar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.para }}",
+        "subject": "={{ $json.asunto }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000307",
+      "name": "Enviar recordatorio",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        960,
+        100
+      ],
+      "notes": "Credencial: Gmail (OAuth2) de la cuenta que envía el reporte",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=select app.marcar_recordatorios_prioridad_b('{{ $('Armar correo').item.json.tenant_id }}'::uuid, convert_from(decode('{{ $('Armar correo').item.json.contactos_b64 }}', 'base64'), 'UTF8')::jsonb) as r",
+        "options": {
+          "queryBatching": "independently"
+        }
+      },
+      "id": "a91e0000-0000-4000-8000-000000000308",
+      "name": "Marcar enviados",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1200,
+        100
+      ],
+      "notes": "Credencial Postgres: Supabase agente-inmobiliario",
+      "alwaysOutputData": false
+    }
+  ],
+  "connections": {
+    "Cada día 7:40": {
+      "main": [
+        [
+          {
+            "node": "Recordatorios por tenant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ejecutar ahora": {
+      "main": [
+        [
+          {
+            "node": "Recordatorios por tenant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recordatorios por tenant": {
+      "main": [
+        [
+          {
+            "node": "Armar correo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar correo": {
+      "main": [
+        [
+          {
+            "node": "¿Hay a quién avisar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay a quién avisar?": {
+      "main": [
+        [
+          {
+            "node": "Enviar recordatorio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar recordatorio": {
+      "main": [
+        [
+          {
+            "node": "Marcar enviados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Bogota"
+  }
+}

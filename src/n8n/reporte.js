@@ -4,6 +4,7 @@
  * Reporte semanal de leads no calificados y de prioridad baja (nutrición),
  * a partir de app.reportes_no_calificados(). Arma el correo para el
  * administrador del tenant (parametros.reporte_no_calificados.destinatarios).
+ * Incluye los barrios que no se encontraron en la hoja de cobertura.
  */
 
 const ROL = { lucia: 'Lucía (vende)', sonia: 'Sonia (compra / busca arriendo)' };
@@ -45,6 +46,7 @@ function armarReporte(r) {
   const destinatarios = (r.destinatarios || []).filter((d) => typeof d === 'string' && d.includes('@'));
   const noCalificados = r.no_calificados || [];
   const baja = r.prioridad_baja || [];
+  const barrios = r.barrios_no_listados || [];
   const periodo = `${fecha(r.desde, zona)} al ${fecha(r.hasta, zona)}`;
   const html = [
     `<h2>Leads no calificados y de prioridad baja</h2>`,
@@ -58,6 +60,13 @@ function armarReporte(r) {
       ...COMUNES,
       { titulo: 'Plazo (meses)', valor: (f) => f.plazo_meses || '—' },
       { titulo: 'Estado actual', valor: (f) => f.estado_actual || '—' },
+    ], zona),
+    // Barrios que no están en la hoja de cobertura: revisar si se agregan (decisión del 4 nov 2026).
+    tabla('Barrios que no están en el listado', barrios, [
+      ...COMUNES.slice(0, 4),
+      { titulo: 'Barrio', valor: (f) => f.barrio || '—' },
+      { titulo: 'Dirección', valor: (f) => f.direccion || '—' },
+      { titulo: 'Detalle', valor: (f) => f.detalle || '—' },
     ], zona),
   ].join('\n');
   return {

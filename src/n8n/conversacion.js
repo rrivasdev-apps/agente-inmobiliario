@@ -74,9 +74,20 @@ function valoresPrompt(ctx) {
     ciudades_cobertura: listaHumana(((ctx.tenant.parametros || {}).cobertura || {}).ciudades || []) || 'su zona de cobertura',
     propuesta: textoPropuesta(comercial.propuesta, comercial.asesor || 'el asesor'),
     condiciones_propuesta: condicionesPropuesta(comercial.propuesta).replace(/el asesor/g, comercial.asesor || 'el asesor'),
-    valor_minimo: millones(((ctx.tenant.parametros || {}).propietarios || {}).valor_minimo_cop),
+    valor_minimo: millones(valorMinimoEfectivo(((ctx.tenant.parametros || {}).propietarios || {}))),
     valor_premium: millones(((ctx.tenant.parametros || {}).propietarios || {}).valor_premium_cop),
   };
+}
+
+/**
+ * Mínimo que se atiende, ya con la tolerancia (como lo aplica el evaluador):
+ * 450 M con 10 % -> 405 M. Así el agente no trata como referencia un valor que sí califica.
+ */
+function valorMinimoEfectivo(p) {
+  const minimo = p.valor_minimo_cop;
+  const pct = p.tolerancia_valor_pct;
+  if (typeof minimo !== 'number') return minimo;
+  return typeof pct === 'number' && pct > 0 && pct < 100 ? Math.round(minimo * (1 - pct / 100)) : minimo;
 }
 
 /** 450000000 -> "450 millones de pesos"; 1000000000 -> "mil millones de pesos". */

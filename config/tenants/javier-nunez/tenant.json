@@ -21,12 +21,12 @@
     "propietarios": {
       "relaciones_validas": ["propietario", "copropietario", "apoderado"],
       "valor_minimo_cop": 450000000,
+      "tolerancia_valor_pct": 10,
       "valor_premium_cop": 1000000000
     },
     "prioridad": {
       "alta_hasta_meses": 3,
-      "baja_agendar_desde_dias": 14,
-      "baja_agendar_hasta_meses": 12
+      "recordatorio_meses_antes": 2
     },
     "compra": {
       "presupuesto_minimo_cop": 200000000
@@ -42,7 +42,12 @@
       "incluir_no_calificados": true
     },
     "conversacion": {
-      "cierre_inactividad_horas": 48
+      "cierre_inactividad_horas": 48,
+      "retraso_escritura": {
+        "minimo_s": 2,
+        "maximo_s": 8,
+        "caracteres_por_segundo": 30
+      }
     },
     "reporte_no_calificados": {
       "activo": true,
@@ -104,9 +109,9 @@
         "comision_solo_si_vende": true,
         "comision_comprador_propio_pct": 2.5,
         "comision_comprador_propio_condicion": "si el propietario consigue por su cuenta al comprador durante la exclusividad",
-        "plazo_exclusividad_meses": 6,
-        "clausula_salida": "se revisan juntos los resultados y el propietario decide si continúa, se ajusta la estrategia o se termina el acuerdo",
-        "informe_mensual": true,
+        "plazo_exclusividad_meses": null,
+        "clausula_salida": null,
+        "informe_mensual": false,
         "beneficios": [],
         "video_url": null,
         "video_minutos": 3,

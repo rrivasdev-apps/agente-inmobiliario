@@ -35,6 +35,7 @@ const MODULOS = {
   agenda: () => modulo('agenda', 'src/n8n/agenda.js'),
   ghl: () => modulo('ghl', 'src/integraciones/gohighlevel.js'),
   reporte: () => modulo('reporte', 'src/n8n/reporte.js'),
+  recordatorios: () => modulo('recordatorios', 'src/n8n/recordatorios.js'),
   barrios: () => modulo('barrios', 'src/cobertura/barrios.js'),
 };
 
@@ -452,8 +453,16 @@ return { json: { r: previo.r, respuesta: { ...redaccion, eventos: [...previo.pla
 
 code('Preparar envío', [x(36), -80], ['meta'], `
 const respuesta = $json.respuesta || { ...$json.plan.respuesta_fija, opciones: $json.plan.opciones, eventos: $json.plan.eventos };
-return { json: { r: $json.r, respuesta, envio: meta.solicitudEnvio($json.r, respuesta.texto, respuesta.documento, respuesta.opciones) } };
+const retraso = ((($json.r.tenant || {}).parametros || {}).conversacion || {}).retraso_escritura;
+return { json: {
+  r: $json.r,
+  respuesta,
+  envio: meta.solicitudEnvio($json.r, respuesta.texto, respuesta.documento, respuesta.opciones),
+  espera_s: meta.segundosEscritura(respuesta.texto, retraso),
+} };
 `);
+// Pausa proporcional al largo del mensaje, para que no parezca prehecho (parametros.conversacion.retraso_escritura).
+nodo('Simular escritura', 'n8n-nodes-base.wait', 1.1, [x(36), 120], { amount: '={{ $json.espera_s }}', unit: 'seconds' });
 si('¿WhatsApp?', [x(37), -80], "$json.r.canal.tipo === 'whatsapp'");
 graph('WhatsApp: enviar', [x(38), -240], 'Credencial Header Auth: Meta WhatsApp');
 graph('Instagram: enviar', [x(38), 80], 'Credencial Header Auth: Meta Instagram');
@@ -470,7 +479,8 @@ conectar('¿Respuesta fija?', 'Preparar envío', 0);
 conectar('¿Respuesta fija?', 'OpenAI: redactar respuesta', 1);
 conectar('OpenAI: redactar respuesta', 'Interpretar redacción');
 conectar('Interpretar redacción', 'Preparar envío');
-conectar('Preparar envío', '¿WhatsApp?');
+conectar('Preparar envío', 'Simular escritura');
+conectar('Simular escritura', '¿WhatsApp?');
 conectar('¿WhatsApp?', 'WhatsApp: enviar', 0);
 conectar('¿WhatsApp?', 'Instagram: enviar', 1);
 conectar('WhatsApp: enviar', 'Resultado del envío');
@@ -574,10 +584,56 @@ const flujoBarrios = {
   settings: { executionOrder: 'v1', timezone: 'America/Bogota' },
 };
 
+// --- Flujo 4: recordatorio diario de prioridad B -------------------------------------------
+// Cada día a las 7:40 (hora de Bogotá) envía por correo a los destinatarios del
+// reporte los propietarios de prioridad B cuya fecha estimada de venta está a
+// parametros.prioridad.recordatorio_meses_antes meses, y deja constancia en
+// app.eventos para no repetirlos (migración 0018).
+
+nodos.length = 0;
+for (const k of Object.keys(conexiones)) delete conexiones[k];
+secuencia = 300;
+
+nodo('Cada día 7:40', 'n8n-nodes-base.scheduleTrigger', 1.2, [x(0), 0], {
+  rule: { interval: [{ field: 'days', daysInterval: 1, triggerAtHour: 7, triggerAtMinute: 40 }] },
+});
+nodo('Ejecutar ahora', 'n8n-nodes-base.manualTrigger', 1, [x(0), 200], {});
+postgres('Recordatorios por tenant', [x(1), 100], 'select app.recordatorios_prioridad_b() as r');
+code('Armar correo', [x(2), 100], ['recordatorios'], `
+return { json: recordatorios.armarRecordatorio($json.r) };
+`);
+si('¿Hay a quién avisar?', [x(3), 100], '$json.enviar === true');
+nodo('Enviar recordatorio', 'n8n-nodes-base.gmail', 2.1, [x(4), 100], {
+  sendTo: '={{ $json.para }}',
+  subject: '={{ $json.asunto }}',
+  emailType: 'html',
+  message: '={{ $json.html }}',
+  options: { appendAttribution: false },
+}, { notes: 'Credencial: Gmail (OAuth2) de la cuenta que envía el reporte', notesInFlow: true });
+// Se marca solo lo que se envió: si el correo falla, el recordatorio sale al día siguiente.
+postgres('Marcar enviados', [x(5), 100],
+  "select app.marcar_recordatorios_prioridad_b('{{ $('Armar correo').item.json.tenant_id }}'::uuid, "
+  + "convert_from(decode('{{ $('Armar correo').item.json.contactos_b64 }}', 'base64'), 'UTF8')::jsonb) as r");
+
+conectar('Cada día 7:40', 'Recordatorios por tenant');
+conectar('Ejecutar ahora', 'Recordatorios por tenant');
+conectar('Recordatorios por tenant', 'Armar correo');
+conectar('Armar correo', '¿Hay a quién avisar?');
+conectar('¿Hay a quién avisar?', 'Enviar recordatorio', 0);
+conectar('Enviar recordatorio', 'Marcar enviados');
+
+const flujoRecordatorios = {
+  name: 'Agente inmobiliario: recordatorio de prioridad B',
+  nodes: [...nodos],
+  connections: { ...conexiones },
+  settings: { executionOrder: 'v1', timezone: 'America/Bogota' },
+};
+
 const SALIDAS = [
   [destino, flujo],
   [path.join(raiz, 'n8n', 'reporte-no-calificados.json'), flujoReporte],
   [path.join(raiz, 'n8n', 'sincronizar-barrios.json'), flujoBarrios],
+  [path.join(raiz, 'n8n', 'recordatorio-prioridad-b.json'), flujoRecordatorios],
 ];
 
 if (require.main === module) {
@@ -601,4 +657,4 @@ if (require.main === module) {
   if (process.argv.includes('--check')) console.log('Flujos de n8n actualizados.');
 }
 
-module.exports = { flujo, flujoReporte, flujoBarrios, EXPRESION_TRAE_MENSAJES };
+module.exports = { flujo, flujoReporte, flujoBarrios, flujoRecordatorios, EXPRESION_TRAE_MENSAJES };

@@ -184,6 +184,22 @@ function solicitudEnvio(ctx, texto, documento, opciones) {
   throw new Error(`Canal sin envío configurado: ${ctx.canal.tipo}`);
 }
 
+/**
+ * Segundos de espera antes de enviar, para que la respuesta no llegue de golpe
+ * y parezca escrita (reunión del 27 oct 2026). Crece con el largo del texto
+ * entre parametros.conversacion.retraso_escritura.minimo_s y maximo_s.
+ * Sin configuración, no se espera.
+ */
+function segundosEscritura(texto, config) {
+  const c = config || {};
+  const minimo = Number(c.minimo_s);
+  const maximo = Number(c.maximo_s);
+  const ritmo = Number(c.caracteres_por_segundo);
+  if (!(minimo >= 0) || !(maximo >= minimo) || !(ritmo > 0)) return 0;
+  const segundos = String(texto || '').length / ritmo;
+  return Math.round(Math.min(maximo, Math.max(minimo, segundos)) * 10) / 10;
+}
+
 function solicitudRespuestaComentario(comentarioId, texto) {
   return { url: `${GRAPH}/${encodeURIComponent(comentarioId)}/replies`, cuerpo: { message: texto } };
 }
@@ -207,6 +223,7 @@ function interpretarEnvio(respuesta) {
 }
 
 module.exports = {
+  segundosEscritura,
   prepararFirma,
   normalizarWebhook,
   solicitudEnvio,

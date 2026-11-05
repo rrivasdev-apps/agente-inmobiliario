@@ -26,6 +26,7 @@
  *   (p. ej. el valor de la propiedad no se exige a quien ya dijo que no lo sabe).
  * - `parametro`: el valor sale de los parámetros del tenant (ruta con puntos).
  *   Si el parámetro está vacío (null), la regla no se aplica.
+ * - `tolerancia_parametro`: con mayor_o_igual, porcentaje que baja el mínimo.
  * - `temprana`: la regla se aplica apenas se conoce su dato, aunque falten
  *   otros (p. ej. cobertura): si falla, no se prolonga la calificación.
  * - `prioridad`: quien cumple los criterios es "alta" si el plazo (en meses)
@@ -320,10 +321,22 @@ function diasAgendaBaja(config, datos, parametros) {
   return typeof tope === 'number' && plazo > tope ? null : dias;
 }
 
+/**
+ * `tolerancia_parametro` (solo con mayor_o_igual): porcentaje que se descuenta
+ * del mínimo. Con 450 M y 10 %, se atiende desde 405 M (reunión del 27 oct 2026).
+ */
+function conTolerancia(regla, parametros) {
+  if (!regla.tolerancia_parametro || regla.operador !== 'mayor_o_igual' || typeof regla.valor !== 'number') return regla;
+  const pct = obtener(parametros || {}, regla.tolerancia_parametro);
+  if (typeof pct !== 'number' || pct <= 0 || pct >= 100) return regla;
+  return { ...regla, valor: Math.round(regla.valor * (1 - pct / 100)) };
+}
+
 function evaluarReglas(reglas, datos, parametros) {
   return reglas
     .filter((regla) => aplicaCondiciones(regla, datos))
     .map((regla) => (regla.parametro === undefined ? regla : { ...regla, valor: obtener(parametros || {}, regla.parametro) }))
+    .map((regla) => conTolerancia(regla, parametros))
     .filter((regla) => regla.valor !== undefined && regla.valor !== null)
     .map((regla) => {
       const errores = validarValor(regla, `regla ${regla.id}`);

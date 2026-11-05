@@ -141,8 +141,9 @@ test('Lucía: la cobertura se evalúa apenas se conoce la ciudad, sin pedir el r
   assert.ok(r.campos_faltantes.length > 0, 'no hacía falta completar los datos');
   const conRelacion = evaluarLucia({ nombre: 'Ana', ciudad: 'Medellín', relacion_inmueble: 'conocido' }, null);
   assert.equal(conRelacion.codigo_motivo, 'relacion_valida,cobertura_ciudad', 'informa todas las reglas incumplidas con dato');
-  // En Bogotá sigue pidiendo datos en el orden configurado: primero la ciudad.
-  assert.equal(evaluarLucia({ ciudad: 'Bogotá' }, null).campos_faltantes[0], 'nombre');
+  // En Bogotá sigue pidiendo datos en el orden configurado: la ubicación va primero
+  // (reunión del 27 oct 2026): ciudad, barrio y tipo de inmueble, y luego el nombre.
+  assert.deepEqual(evaluarLucia({ ciudad: 'Bogotá' }, null).campos_faltantes.slice(0, 3), ['barrio', 'tipo_inmueble', 'nombre']);
   assert.equal(evaluarLucia({}, null).campos_faltantes[0], 'ciudad');
 });
 
@@ -194,12 +195,14 @@ test('prioridad: plazo dentro del umbral agenda; plazo mayor nutre o agenda a fu
   assert.equal(baja.resultado, 'calificado');
   assert.equal(baja.prioridad, 'baja');
   assert.equal(baja.accion, 'nutrir');
-  // Lucía: prioridad B = agendar a futuro (prioridad.baja_agendar_desde_dias, 26 oct 2026).
-  const luciaBaja = evaluarLucia({ ...propietario, plazo_meses: 6 }, { resultado: 'verificada' });
-  assert.equal(luciaBaja.prioridad, 'baja');
-  assert.equal(luciaBaja.accion, 'ofrecer_agenda');
-  assert.equal(luciaBaja.agendar_desde_dias, parametros.prioridad.baja_agendar_desde_dias);
-  assert.equal(evaluarLucia({ ...propietario, plazo_meses: 2 }, { resultado: 'verificada' }).agendar_desde_dias, undefined);
+  // Lucía: prioridad B (más de 3 meses) no se agenda; queda con recordatorio por correo (4 nov 2026).
+  for (const plazo of [6, 10, 12]) {
+    const luciaBaja = evaluarLucia({ ...propietario, plazo_meses: plazo }, { resultado: 'verificada' });
+    assert.equal(luciaBaja.prioridad, 'baja');
+    assert.equal(luciaBaja.accion, 'nutrir');
+    assert.equal(luciaBaja.agendar_desde_dias, undefined);
+  }
+  assert.equal(evaluarLucia({ ...propietario, plazo_meses: 3 }, { resultado: 'verificada' }).accion, 'ofrecer_agenda');
 });
 
 test('prioridad: sin días para la prioridad baja, se nutre como antes', () => {
@@ -219,7 +222,7 @@ test('valor no informado tras dos intentos: no se exige, no descarta y queda en 
   const r = evaluarLucia({ ...sinValor, valor_no_informado: true }, { resultado: 'verificada' });
   assert.equal(r.resultado, 'calificado');
   assert.equal(r.prioridad, 'baja');
-  assert.equal(r.accion, 'ofrecer_agenda');
+  assert.equal(r.accion, 'nutrir');
   assert.ok(!r.reglas.some((x) => x.id === 'valor_minimo'), 'la regla de valor no aplica sin valor');
 });
 
@@ -307,7 +310,23 @@ test('Lucía: valor mínimo de la propiedad en venta (parámetro), aplicado apen
   assert.equal(r.resultado, 'no_calificado');
   assert.equal(r.codigo_motivo, 'valor_minimo');
   assert.equal(evaluarLucia({ ...propietario, valor_estimado_cop: 450000000 }, { resultado: 'verificada' }).resultado, 'calificado', 'el mínimo se incluye');
-  assert.equal(evaluarLucia({ ...propietario, valor_estimado_cop: 449000000 }, { resultado: 'verificada' }).codigo_motivo, 'valor_minimo', 'menos de 450 M no se atiende directamente (26 oct 2026)');
+  // Tolerancia del 10 % (reunión del 27 oct 2026): con 450 M se atiende desde 405 M.
+  assert.equal(evaluarLucia({ ...propietario, valor_estimado_cop: 410000000 }, { resultado: 'verificada' }).resultado, 'calificado', '410 M entra por la tolerancia');
+  assert.equal(evaluarLucia({ ...propietario, valor_estimado_cop: 405000000 }, { resultado: 'verificada' }).resultado, 'calificado', 'el mínimo con tolerancia se incluye');
+  assert.equal(evaluarLucia({ ...propietario, valor_estimado_cop: 400000000 }, { resultado: 'verificada' }).codigo_motivo, 'valor_minimo', 'menos de 405 M no se atiende directamente');
+});
+
+test('tolerancia: sin parámetro o con un valor inválido, el mínimo es el exacto', () => {
+  for (const tolerancia_valor_pct of [null, 0, 'diez', 150]) {
+    const r = evaluarCalificacion({
+      criterios: lucia.criterios,
+      requiereVerificacionDireccion: true,
+      datos: { ...propietario, valor_estimado_cop: 410000000 },
+      verificacionDireccion: { resultado: 'verificada' },
+      parametros: { ...parametros, propietarios: { ...parametros.propietarios, tolerancia_valor_pct } },
+    });
+    assert.equal(r.codigo_motivo, 'valor_minimo', `tolerancia ${tolerancia_valor_pct}`);
+  }
 });
 
 test('Lucía: tipos atendidos y relaciones válidas salen de los parámetros', () => {
@@ -317,18 +336,8 @@ test('Lucía: tipos atendidos y relaciones válidas salen de los parámetros', (
   assert.equal(evaluarLucia({ ...propietario, relacion_inmueble: 'familiar' }, { resultado: 'verificada' }).codigo_motivo, 'relacion_valida');
 });
 
-test('prioridad B: hasta prioridad.baja_agendar_hasta_meses se agenda; un plazo mayor se nutre', () => {
-  const v = { resultado: 'verificada' };
-  assert.equal(evaluarLucia({ ...propietario, plazo_meses: 12 }, v).accion, 'ofrecer_agenda', '"más de 6 meses" o "no definido" = 12: B');
-  const lejos = evaluarLucia({ ...propietario, plazo_meses: 24 }, v);
+test('prioridad B: un plazo lejano también se nutre, sin cita', () => {
+  const lejos = evaluarLucia({ ...propietario, plazo_meses: 24 }, { resultado: 'verificada' });
   assert.equal(lejos.prioridad, 'baja');
   assert.equal(lejos.accion, 'nutrir');
-  const sinTope = evaluarCalificacion({
-    criterios: lucia.criterios,
-    requiereVerificacionDireccion: true,
-    datos: { ...propietario, plazo_meses: 24 },
-    verificacionDireccion: v,
-    parametros: { ...parametros, prioridad: { ...parametros.prioridad, baja_agendar_hasta_meses: null } },
-  });
-  assert.equal(sinTope.accion, 'ofrecer_agenda', 'sin tope, toda la prioridad baja es B');
 });

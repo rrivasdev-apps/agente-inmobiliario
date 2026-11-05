@@ -97,8 +97,19 @@ Flujo **Agente inmobiliario: reporte semanal de no calificados** (id `rqPgSXmlwJ
 
 - **No calificados**, con el motivo de descalificación.
 - **Prioridad baja** (en nutrición, no se agendaron), con el plazo y el estado actual.
+- **Barrios que no están en el listado** (desde el 4 nov 2026): conversaciones de la ciudad atendida cuyo barrio no se encontró en la hoja de cobertura (eventos `cobertura_barrio`), para revisar si se agregan.
 
 Para activarlo: asignar una credencial Gmail (OAuth2) al nodo **Enviar reporte**, poner el correo del administrador en los parámetros y activar el flujo. El nodo **Ejecutar ahora** permite probarlo a mano.
+
+## Recordatorio de prioridad B
+
+Flujo **Agente inmobiliario: recordatorio de prioridad B** (id `ouOtTcjlKpzajbL5`, `n8n/recordatorio-prioridad-b.json`, migración 0018), creado **inactivo** el 4 nov 2026 con la credencial de Postgres; falta la de Gmail. Cada día a las 7:40 (hora de Bogotá) consulta `app.recordatorios_prioridad_b()` y envía por Gmail, a los mismos destinatarios del reporte, los propietarios de prioridad B (en `nutricion`) cuya fecha estimada de venta está a `prioridad.recordatorio_meses_antes` meses. La fecha se calcula como la entrada a `nutricion` más el plazo que dio la persona. Después de enviar, **Marcar enviados** registra cada contacto en `app.eventos` (`recordatorio_prioridad_b`) para no repetirlo; si el correo falla, sale al día siguiente.
+
+Para activarlo: asignar una credencial Gmail (OAuth2) al nodo **Enviar recordatorio**, registrar los destinatarios (`app.usuarios` con `recibe_reporte`) y activar el flujo.
+
+## Retraso de escritura
+
+Antes de enviar cada respuesta, el nodo **Simular escritura** espera `espera_s` segundos (`meta.segundosEscritura`): el largo del texto dividido entre `conversacion.retraso_escritura.caracteres_por_segundo`, entre `minimo_s` y `maximo_s`. Sin el parámetro no espera. La espera se suma al tiempo que ya tarda la redacción.
 
 ## Sincronizar barrios atendidos
 
@@ -113,7 +124,7 @@ npm test && npm run test:db
 ```
 
 - Configuración: aplicar `supabase/seed.sql` en Supabase (upserts; no duplica).
-- Flujos: `PUT /api/v1/workflows/<id>` con el JSON. Un PUT reemplaza los nodos: copiar las credenciales del flujo publicado a los nodos del JSON antes de enviarlo.
+- Flujos: `PUT /api/v1/workflows/<id>` con el JSON (clave en `.env` → `N8N_API_KEY`). Un PUT reemplaza los nodos: copiar las credenciales del flujo publicado a los nodos del JSON antes de enviarlo.
 
 ## Límites conocidos
 

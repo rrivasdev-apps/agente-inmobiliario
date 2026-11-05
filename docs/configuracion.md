@@ -8,22 +8,23 @@ Todo umbral de negocio vive en `config/tenants/<tenant>/tenant.json` → `parame
 | `cobertura.tipos_inmueble` | apartamento, casa, terreno, oficina | Tipos atendidos (venta, compra y arriendo). Terreno incluye lote. |
 | `propietarios.relaciones_validas` | propietario, copropietario, apoderado | Relación con el inmueble que califica (Lucía). |
 | `propietarios.valor_minimo_cop` | `450000000` | Valor mínimo de la propiedad en venta (Lucía, 26 oct). Se aplica apenas la persona da el valor; por debajo se ofrece una referencia a un colega (`referencia_valor`). `null` = sin mínimo. |
+| `propietarios.tolerancia_valor_pct` | `10` | Tolerancia bajo el valor mínimo (reunión del 27 oct): con 450 M y 10 %, se atiende desde 405 M. Se aplica siempre. `null` = mínimo exacto. |
 | `propietarios.valor_premium_cop` | `1000000000` | Desde este valor Lucía responde con el mensaje premium del guion de Javier. Solo cambia la respuesta, no la calificación. |
-| `prioridad.alta_hasta_meses` | `3` | Quien califica y quiere concretar en ese plazo o menos es prioridad alta (se agenda ya). Más: prioridad baja. |
-| `prioridad.baja_agendar_desde_dias` | `14` (provisional) | Prioridad B = agendar a futuro: los horarios se ofrecen a partir de estos días (`calificado_futuro`). `null` = la prioridad baja se nutre sin cita (`nutricion`), como antes. Solo lo usan los roles con `agenda_baja_parametro` (Lucía). |
-| `prioridad.baja_agendar_hasta_meses` | `12` (provisional) | Tope de la prioridad B: con un plazo mayor (p. ej. "en 2 años") la prioridad baja se nutre sin cita. "Más de 6 meses" y "aún no lo tengo definido" se registran como 12, así que se agendan. `null` = toda la prioridad baja se agenda a futuro. |
+| `prioridad.alta_hasta_meses` | `3` | Quien califica y quiere concretar en ese plazo o menos es prioridad alta (se agenda ya). Más: prioridad B, que no se agenda (decisión del 4 nov 2026). |
+| `prioridad.recordatorio_meses_antes` | `2` | Prioridad B: cuántos meses antes de la fecha estimada de venta se le envía a Javier el recordatorio por correo (flujo de recordatorio, migración 0018). "Entre 4 y 6 meses" se registra como 6 y "más de 6 meses" o "no definido" como 12: avisos a los 4 y a los 10 meses. `null` = sin recordatorios. |
 | `compra.presupuesto_minimo_cop` | `200000000` | Presupuesto mínimo para compradores. `null` = sin mínimo. |
 | `arriendo.canon_minimo_cop` | `null` | Canon mensual mínimo para quien busca arriendo. `null` = sin mínimo. |
 | `dossier.lucia` / `dossier.sonia` | `null` | `{ "url": "https://…/dossier.pdf", "nombre_archivo": "JNdelT.pdf" }`: se envía automáticamente a prioridad baja (archivo en WhatsApp, enlace en Instagram). La URL debe ser pública. |
 | `nutricion.incluir_no_calificados` | `true` | Los no calificados reciben la plantilla `no_calificado_nutricion` (y el dossier, si existe) en lugar de solo "no cumples las condiciones". |
+| `conversacion.retraso_escritura` | `{ minimo_s: 2, maximo_s: 8, caracteres_por_segundo: 30 }` | Pausa antes de enviar cada respuesta, proporcional al largo, para que no parezca prehecha (27 oct). Sin el parámetro, no hay pausa. |
 | `conversacion.cierre_inactividad_horas` | `48` | Horas sin mensajes tras las que se cierra la conversación. Si la persona escribe después, el agente la saluda por su nombre, le recuerda lo pendiente (cita, agendamiento, datos) y pregunta en qué la puede ayudar. |
 | `comercial.asesor_nombre_completo` | `"Javier Núñez del Toro"` | A nombre de quién se presentan Lucía y Sonia ("asistente virtual de Javier Núñez del Toro"). |
 | `comercial.propuesta.exclusiva` / `comision_pct` / `comision_solo_si_vende` | `true` / `5` / `true` | Lo que Lucía explica antes de agendar: exclusiva, comisión del 5 % que solo se paga si se concreta la venta. |
 | `comercial.propuesta.comision_comprador_propio_pct` | `2.5` (provisional) | Comisión si el propietario consigue al comprador. Lucía la usa solo para responder dudas. `null` = no se menciona. |
 | `comercial.propuesta.comision_comprador_propio_condicion` | "si el propietario consigue por su cuenta al comprador durante la exclusividad" (provisional) | Condición de esa comisión, tal como la dice Lucía. |
-| `comercial.propuesta.plazo_exclusividad_meses` | `6` (provisional) | Duración de la exclusividad. `null` = Lucía dice que lo aclara Javier. |
-| `comercial.propuesta.clausula_salida` | "se revisan juntos los resultados y el propietario decide si continúa, se ajusta la estrategia o se termina el acuerdo" (provisional) | Qué pasa al final del plazo. `null` = lo aclara Javier. |
-| `comercial.propuesta.informe_mensual` | `true` (provisional) | Si se entrega un informe mensual de la gestión. `null` o `false` = no se menciona. |
+| `comercial.propuesta.plazo_exclusividad_meses` | `null` (4 nov: pendiente de Javier, 90 + 90 días o 6 meses) | Duración de la exclusividad. `null` = Lucía dice que lo aclara Javier. |
+| `comercial.propuesta.clausula_salida` | `null` (4 nov: Lucía no la menciona) | Qué pasa al final del plazo. `null` = lo aclara Javier. |
+| `comercial.propuesta.informe_mensual` | `false` (4 nov: Lucía no lo menciona) | Si se entrega un informe mensual de la gestión. `null` o `false` = no se menciona. |
 | `comercial.propuesta.video_url` / `video_minutos` | `null` / `3` | Con URL, la propuesta se envía con el video (`propuesta_video`) y menciona los minutos; sin URL no se ofrece. |
 | `comercial.propuesta.beneficios` / `acuerdo_url` | `[]` / `null` | Beneficios aprobados y borrador del acuerdo; vacíos, no se mencionan. |
 | `seguimiento.dias_tras_pensarlo` | `2` (provisional) | Días para escribir tras "déjame pensarlo". Aún no se usa: Lucía no lo promete hasta que existan los envíos programados. |
@@ -49,7 +50,7 @@ Las reglas de cada rol (`roles/*.json` → `criterios`) usan estos parámetros c
 1. **Datos obligatorios**: si falta alguno, se pide (los de compra o arriendo según `operacion`).
 2. **Dirección** (solo Lucía): verificada con Google Maps.
 3. **Criterios mínimos**: todas las reglas del rol. Si alguna falla: `no_calificado` con motivo.
-4. **Prioridad**: plazo ≤ `prioridad.alta_hasta_meses` → alta → horarios y cita en GoHighLevel. Si no → baja: con `prioridad.baja_agendar_desde_dias` (Lucía) se agenda a partir de esos días, salvo que el plazo supere `prioridad.baja_agendar_hasta_meses`; sin él (Sonia), plantilla `prioridad_baja` (+ dossier si existe), estado `nutricion`, sin cita. Si la persona vuelve con urgencia, pasa a agendar.
+4. **Prioridad**: plazo ≤ `prioridad.alta_hasta_meses` → alta → horarios y cita en GoHighLevel. Si no → baja (prioridad B): plantilla `prioridad_baja` (+ dossier si existe), estado `nutricion`, sin cita. En Lucía, Javier recibe un recordatorio por correo `prioridad.recordatorio_meses_antes` meses antes de la fecha estimada de venta. Si la persona vuelve con urgencia, pasa a agendar. (Los roles aún admiten `agenda_baja_parametro` para agendar la prioridad baja a futuro; desde el 4 nov 2026 Lucía no lo usa.)
 
 Condiciones de los criterios: `si` aplica una regla o campo solo con cierto valor de otro dato; `salvo`, al revés (el valor de la propiedad no se exige ni se evalúa con `valor_no_informado`). `prioridad.baja_si` fuerza prioridad baja.
 

@@ -30,17 +30,17 @@
     {"clave": "desea_continuar", "etiqueta": "Quiere avanzar con Javier", "tipo": "booleano", "descripcion": "Solo después de que se le explicó cómo trabaja Javier: true si dice que quiere continuar o agendar; false si dice que no quiere avanzar por ahora. Una duda no es un no."}
   ],
   "criterios": {
-    "campos_obligatorios": ["ciudad", "nombre", "telefono", "operacion", "tipo_inmueble", "barrio", "estado_ocupacion", {"campo": "fin_contrato_arriendo", "si": {"campo": "estado_ocupacion", "valor": "arrendado"}}, {"campo": "disponible_visitas", "si": {"campo": "estado_ocupacion", "valor": "vive_alli"}}, "publicado_en_mercado", "plazo_meses", {"campo": "valor_estimado_cop", "si": {"campo": "operacion", "valor": "venta"}, "salvo": {"campo": "valor_no_informado", "valor": true}}, "relacion_inmueble", "otros_decisores", "intencion_venta", "direccion"],
+    "campos_obligatorios": ["ciudad", "barrio", "tipo_inmueble", "nombre", "telefono", "operacion", "estado_ocupacion", {"campo": "fin_contrato_arriendo", "si": {"campo": "estado_ocupacion", "valor": "arrendado"}}, {"campo": "disponible_visitas", "si": {"campo": "estado_ocupacion", "valor": "vive_alli"}}, "publicado_en_mercado", "plazo_meses", {"campo": "valor_estimado_cop", "si": {"campo": "operacion", "valor": "venta"}, "salvo": {"campo": "valor_no_informado", "valor": true}}, "relacion_inmueble", "otros_decisores", "intencion_venta", "direccion"],
     "reglas": [
       {"id": "solo_venta", "campo": "operacion", "operador": "igual", "valor": "venta", "motivo": "Solo quiere arrendar; por ahora el servicio es de venta", "temprana": true},
       {"id": "intencion_operacion", "campo": "intencion_venta", "operador": "igual", "valor": true, "motivo": "No manifestó intención de vender"},
       {"id": "relacion_valida", "campo": "relacion_inmueble", "operador": "en", "parametro": "propietarios.relaciones_validas", "motivo": "La relación declarada con el inmueble no cumple los criterios"},
       {"id": "cobertura_ciudad", "campo": "ciudad", "operador": "en", "parametro": "cobertura.ciudades", "motivo": "El inmueble está fuera de la cobertura directa", "temprana": true},
       {"id": "cobertura_barrio", "campo": "zona_barrio", "operador": "igual", "valor": "atendido", "si": {"campo": "zona_barrio", "valor": ["atendido", "no_atendido"]}, "temprana": true, "motivo": "El barrio no está en la zona que se atiende directamente"},
-      {"id": "valor_minimo", "campo": "valor_estimado_cop", "operador": "mayor_o_igual", "parametro": "propietarios.valor_minimo_cop", "si": {"campo": "operacion", "valor": "venta"}, "salvo": {"campo": "valor_no_informado", "valor": true}, "temprana": true, "motivo": "El valor de la propiedad está por debajo del rango que se atiende directamente"},
+      {"id": "valor_minimo", "campo": "valor_estimado_cop", "operador": "mayor_o_igual", "parametro": "propietarios.valor_minimo_cop", "tolerancia_parametro": "propietarios.tolerancia_valor_pct", "si": {"campo": "operacion", "valor": "venta"}, "salvo": {"campo": "valor_no_informado", "valor": true}, "temprana": true, "motivo": "El valor de la propiedad está por debajo del rango que se atiende directamente"},
       {"id": "tipo_inmueble", "campo": "tipo_inmueble", "operador": "en", "parametro": "cobertura.tipos_inmueble", "motivo": "El tipo de inmueble no se atiende", "temprana": true}
     ],
-    "prioridad": {"campo": "plazo_meses", "parametro": "prioridad.alta_hasta_meses", "baja_si": {"campo": "valor_no_informado", "valor": true}, "agenda_baja_parametro": "prioridad.baja_agendar_desde_dias", "agenda_baja_hasta_parametro": "prioridad.baja_agendar_hasta_meses"}
+    "prioridad": {"campo": "plazo_meses", "parametro": "prioridad.alta_hasta_meses", "baja_si": {"campo": "valor_no_informado", "valor": true}}
   },
   "pendientes": [
     "Ciudades con posibilidad de referencia y agentes disponibles (hoy ninguno confirmado; Chía y La Calera no están aprobadas)."

@@ -600,7 +600,8 @@ test('otra propiedad en la misma reunión con prioridad baja: va a esa reunión'
   });
   const sola = conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion;
   assert.equal(sola.prioridad, 'baja');
-  assert.equal(sola.agendar_desde_dias, 14, 'prioridad B: se agenda a futuro');
+  assert.equal(sola.accion, 'nutrir', 'prioridad B: no se agenda; queda con recordatorio (4 nov 2026)');
+  assert.equal(sola.agendar_desde_dias, undefined);
   const compartida = conv.evaluarTurno({ ...ctx, oportunidad: { cita_compartida: { inicio: '2030-01-01T13:00:00Z' } } }, evaluarCalificacion);
   assert.equal(compartida.evaluacion.accion, 'ofrecer_agenda');
 });
@@ -1136,7 +1137,8 @@ test('referencia por valor (< 450 M) y por barrio: plantilla e instrucción prop
   assert.equal(conv.planificarRespuesta(ciudadYValor).respuesta_fija.plantilla, 'fuera_cobertura', 'la ciudad va primero');
 
   const despues = (ev) => sistemaDe(conv.planificarRespuesta({ ...valor, evaluacion: { ...valor.evaluacion, codigo_motivo: ev }, estado_anterior: 'no_calificado', contacto: { ...valor.contacto, estado: 'no_calificado' } }));
-  assert.match(despues('valor_minimo'), /desde 450 millones de pesos.*No digas cifras/s);
+  // El mínimo que ve el agente ya incluye la tolerancia del 10 % (450 M -> 405 M).
+  assert.match(despues('valor_minimo'), /desde 405 millones de pesos.*No digas cifras/s);
   assert.match(despues('cobertura_barrio'), /no es una de las zonas que Javier atiende/);
   assert.match(despues('valor_minimo'), /no digas que hay un agente disponible/);
   for (const clave of ['fuera_cobertura', 'fuera_cobertura_barrio', 'referencia_valor']) {
@@ -1228,11 +1230,15 @@ test('propuesta: condiciones del guion como parámetros (2,5 %, exclusividad, sa
   const sistema = sistemaDe(conv.planificarRespuesta(ctx));
   assert.match(sistema, /comisión del 5 %, que solo se paga si se concreta la venta/);
   assert.match(sistema, /Si el propietario consigue por su cuenta al comprador durante la exclusividad, la comisión es del 2,5 %\./);
-  assert.match(sistema, /La exclusividad es por 6 meses/);
-  assert.match(sistema, /Al final del plazo, se revisan juntos los resultados.*se termina el acuerdo\./s);
   assert.match(sistema, /no las enumeres al presentar la propuesta/, 'las condiciones son para dudas, no para la presentación');
   assert.doesNotMatch(sistema, /dJavier/);
-  assert.match(sistema, /informe mensual/);
+  // Decisión del 4 nov 2026: solo 5 % y 2,5 %; duración, salida e informe los explica Javier.
+  assert.doesNotMatch(sistema, /exclusividad es por|Al final del plazo|se entrega un informe mensual/);
+  const conTodo = { ...PARAMS, comercial: { ...PARAMS.comercial, propuesta: { ...PARAMS.comercial.propuesta, plazo_exclusividad_meses: 6, clausula_salida: 'se revisan juntos los resultados', informe_mensual: true } } };
+  const completo = sistemaDe(conv.planificarRespuesta({ ...ctx, tenant: { ...ctx.tenant, parametros: conTodo } }));
+  assert.match(completo, /La exclusividad es por 6 meses/);
+  assert.match(completo, /Al final del plazo, se revisan juntos los resultados\./);
+  assert.match(completo, /informe mensual/);
   const sinCondiciones = { ...PARAMS, comercial: { ...PARAMS.comercial, propuesta: { exclusiva: true, comision_pct: 5 } } };
   const otro = sistemaDe(conv.planificarRespuesta({ ...ctx, tenant: { ...ctx.tenant, parametros: sinCondiciones } }));
   assert.doesNotMatch(otro, /2,5 %|exclusividad es por|se entrega un informe mensual/, 'en null no se mencionan');
