@@ -272,6 +272,10 @@ function tienePropiedad(ctx) {
     || !['en_calificacion', 'informacion_incompleta'].includes(ctx.contacto.estado);
 }
 
+function direccionVerificada(ctx) {
+  return Boolean((ctx.contacto.datos || {}).direccion && ctx.verificacion && ctx.verificacion.resultado === 'verificada');
+}
+
 function solicitudExtraccion(ctx) {
   const agenda = ctx.conversacion.agenda || {};
   const conHorarios = Array.isArray(agenda.ofrecidos) && agenda.ofrecidos.length > 0;
@@ -287,12 +291,18 @@ function solicitudExtraccion(ctx) {
       `Ya hay ${ctx.rol.codigo === 'sonia' ? 'una búsqueda registrada' : 'una propiedad registrada'}: son los datos ya registrados de abajo.`,
       'Si en su ÚLTIMO mensaje la persona presenta OTRA propiedad distinta (otro inmueble para vender o arrendar, u otra búsqueda), agrega "nueva_propiedad": true y en "datos" incluye solo lo que dijo de esa nueva propiedad. Si solo responde a tus preguntas sobre la propiedad de la que ya se está hablando, no lo agregues.',
       'Si solo corrige o completa un dato de la misma propiedad, no agregues "nueva_propiedad".',
+      // Con la dirección ya verificada, otra dirección no es una aclaración: heredar los datos
+      // del caso anterior haría calificar a una propiedad de la que no se ha preguntado nada.
+      ...(direccionVerificada(ctx) ? [
+        'La dirección de esta propiedad ya está verificada. Si en su ÚLTIMO mensaje da una dirección o un barrio distintos de los registrados y no dice claramente que está corrigiendo un error, trátalo como OTRA propiedad: agrega "nueva_propiedad": true.',
+      ] : []),
     ] : []),
     ...(CAMBIO_INTENCION[ctx.rol.codigo] ? [
       CAMBIO_INTENCION[ctx.rol.codigo].instruccion,
     ] : []),
     ...(tienePropiedad(ctx) || (ctx.oportunidad && ctx.oportunidad.anteriores > 0) ? [
-      'Si la persona pide de forma explícita que esta propiedad se revise en la reunión o cita que ya tiene agendada, agrega "misma_cita": true.',
+      'Si la persona pide de forma explícita que esta propiedad se revise en la reunión o cita que ya tiene agendada, o lo acepta cuando se le pregunta, agrega "misma_cita": true.',
+      'Preguntar si se atiende una zona no es presentar otra propiedad ni dar un dato: no lo registres.',
     ] : []),
     'Campos:',
     ...ctx.rol.campos.map(describirCampo),
@@ -368,7 +378,8 @@ const sinTildes = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036
  * Cobertura por barrio (docs/cobertura.md): con la ciudad atendida y el barrio
  * dado, resolverBarrio dice si se atiende. El resultado entra al evaluador
  * como el dato derivado `zona_barrio`; no se guarda en los datos del contacto.
- * Un barrio que no se reconoce no descarta a nadie: queda como advertencia.
+ * Un barrio que no se reconoce no descarta a nadie, pero tampoco llega a la llamada:
+ * queda en revisión hasta que el asesor lo confirme en la hoja (5 nov 2026).
  */
 function zonaBarrio(ctx, resolverBarrio) {
   const datos = ctx.contacto.datos || {};
@@ -382,6 +393,8 @@ function zonaBarrio(ctx, resolverBarrio) {
     : [];
   return { zona: r.estado, eventos };
 }
+
+const ZONA_POR_CONFIRMAR = new Set(['desconocido', 'ambiguo', 'sin_definir']);
 
 /** Ejecuta el evaluador determinista con la configuración del rol. */
 function evaluarTurno(ctx, evaluarCalificacion, resolverBarrio) {
@@ -399,6 +412,17 @@ function evaluarTurno(ctx, evaluarCalificacion, resolverBarrio) {
       evaluacion.accion = 'ofrecer_agenda';
     }
     exigirPalabrasMinimas(ctx, evaluacion);
+    // informacion_incompleta, no calificado: sin estado de "pendiente de agendar" no hay
+    // recordatorios de agenda, y al confirmarse el barrio el siguiente turno lo reevalúa.
+    if (evaluacion.resultado === 'calificado' && evaluacion.accion === 'ofrecer_agenda' && ZONA_POR_CONFIRMAR.has(zona.zona)) {
+      evaluacion.resultado = 'informacion_incompleta';
+      evaluacion.accion = 'revision_zona';
+      evaluacion.codigo_motivo = 'zona_por_confirmar';
+    }
+    // Ya tiene llamada por otra propiedad: antes de nada, ¿la misma llamada o por separado?
+    if (evaluacion.accion === 'ofrecer_agenda' && debePreguntarMismaCita(ctx)) {
+      evaluacion.accion = 'preguntar_misma_cita';
+    }
     // Antes de ofrecer horarios, la persona conoce la propuesta y dice que quiere continuar.
     if (evaluacion.accion === 'ofrecer_agenda' && pidePropuesta(ctx) && (ctx.contacto.datos || {}).desea_continuar !== true) {
       evaluacion.accion = 'presentar_propuesta';
@@ -416,6 +440,14 @@ function evaluarTurno(ctx, evaluarCalificacion, resolverBarrio) {
 const ESTADOS_CON_CITA = new Set(['seleccion_pendiente_confirmacion', 'cita_confirmada', 'entregado_asesor', 'cita_reprogramada', 'atencion_comercial_iniciada']);
 
 const tieneCampo = (ctx, clave) => (ctx.rol.campos || []).some((c) => c.clave === clave);
+
+function debePreguntarMismaCita(ctx) {
+  return Boolean(ctx.cita_otro_caso)
+    && tieneCampo(ctx, 'llamada_aparte')
+    && (ctx.contacto.datos || {}).llamada_aparte !== true
+    && !ctx.cita
+    && !(ctx.oportunidad && ctx.oportunidad.cita_compartida);
+}
 
 /** El rol presenta la propuesta antes de agendar (campo desea_continuar), salvo que ya haya cita. */
 function pidePropuesta(ctx) {
@@ -552,7 +584,7 @@ function instruccionAgenda(ctx) {
     return 'La reserva se registró, pero el calendario debe confirmarla. Informa que la solicitud de cita quedó registrada y que recibirá la confirmación por este medio. No digas que está confirmada.';
   }
   if (cita && cita.estado === 'confirmada' && new Date(cita.inicio) > new Date()) {
-    return `La persona ya tiene una cita confirmada (${cita.inicio}, ${ctx.tenant.zona_horaria}, modalidad ${cita.modalidad}). Responde con cordialidad a lo que diga. No agendes otra cita ni cambies la existente; si quiere cambiarla, indica que el asesor la atenderá.`;
+    return `La persona ya tiene una cita confirmada (${cita.inicio}, ${ctx.tenant.zona_horaria}, modalidad ${cita.modalidad}). Responde con cordialidad a lo que diga. No agendes otra cita ni cambies la existente ni ofrezcas otra llamada; si quiere cambiarla, indica que el asesor la atenderá. Si pregunta por otra zona o parece hablar de otro inmueble, respóndele y pregúntale si se trata de otra propiedad que quiere vender; no le pidas todavía la dirección.`;
   }
   if (cita && cita.estado === 'seleccion_pendiente') {
     return 'La solicitud de cita está pendiente de confirmación del calendario. Responde con cordialidad; no digas que está confirmada.';
@@ -603,15 +635,17 @@ const RAZON_REFERENCIA = {
 
 function instruccionReferencia(ctx, ev = ctx.evaluacion || {}) {
   const datos = ctx.contacto.datos || {};
-  const cierre = 'Pregunta si necesita alguna aclaración. No ofrezcas una llamada con el asesor, no digas que hay un agente disponible ni que alguien la contactará.';
+  const limites = 'No ofrezcas una llamada con el asesor, no digas que ya pasaste sus datos ni que alguien la contactará.';
+  const cierre = `Pregunta si necesita alguna aclaración. ${limites}`;
   if (datos.autoriza_referencia === true) {
-    return `La persona autorizó compartir sus datos para una posible referencia. Agradécele y explica que consultarán si cuentan con un colega en esa zona y que, si encuentran una opción, podrán gestionar la referencia. ${cierre}`;
+    return `La persona autorizó compartir sus datos para una posible referencia. Agradécele y explica con tus palabras que van a hablar con el colega y que, si puede ayudarla, seguirán con la referencia. ${cierre}`;
   }
   if (datos.autoriza_referencia === false) {
     return `La persona no autorizó compartir sus datos: respétalo y confírmale que no se compartirán. ${cierre}`;
   }
-  const razon = RAZON_REFERENCIA[(motivoReferencia(ev) || ['cobertura_ciudad'])[0]](valoresPrompt(ctx));
-  return `${razon} Responde con cordialidad a lo que diga y pregúntale si autoriza compartir sus datos de contacto y la información de la propiedad para gestionar una posible referencia con un colega de la zona. ${cierre}`;
+  const motivo = (motivoReferencia(ev) || ['cobertura_ciudad'])[0];
+  const colega = motivo === 'valor_minimo' ? 'que trabaja con propiedades de ese rango' : 'que trabaja esa zona';
+  return `${RAZON_REFERENCIA[motivo](valoresPrompt(ctx))} Si hizo una pregunta, respóndela primero. El concepto que debes transmitir, con tus palabras y en primera persona: si quiere y te lo permite, le pasas sus datos y los de la propiedad a un colega de confianza ${colega}. Pídele permiso de forma directa, en una sola pregunta. ${limites}`;
 }
 
 function instruccionPropuesta(ctx) {
@@ -694,6 +728,10 @@ function instruccionSiguientePaso(ctx, ev) {
     }
     case 'reintentar_verificacion':
       return 'Informa que vas a revisar la dirección y que continúan en breve. No descartes a la persona ni pidas otra vez la dirección.';
+    case 'revision_zona':
+      return `${valoresPrompt(ctx).asesor} debe confirmar si atiende ese sector, porque no está en su listado de zonas. Dilo con naturalidad y agradece la información. No ofrezcas ni menciones una llamada, no digas que la zona no se atiende, no des fechas ni prometas que alguien la contactará; invítala a escribir por aquí en unos días para retomar. Si habla de otra cosa, respóndele.`;
+    case 'preguntar_misma_cita':
+      return `Esta propiedad cumple los criterios y la persona ya tiene una llamada con ${valoresPrompt(ctx).asesor} por otra propiedad, el ${fechaYHora(ctx.cita_otro_caso.inicio, ctx.tenant.zona_horaria)}. Pregúntale, con tus palabras, si prefiere hablar de las dos propiedades en esa misma llamada o trabajarlas por separado. No ofrezcas horarios todavía.`;
     case 'ofrecer_agenda':
       return instruccionAgenda(ctx);
     case 'archivar':
@@ -791,7 +829,7 @@ function solicitudRedaccion(ctx) {
 
   return {
     model: modelo(ctx),
-    temperature: 0.4,
+    temperature: 0.6,
     messages: [{ role: 'system', content: `${sistema}\n\n${estado}` }, ...mensajesHistorial(ctx)],
   };
 }
@@ -840,7 +878,7 @@ function solicitudGuia(ctx, rf) {
   const instrucciones = [
     '## Mensaje que envías ahora (lo eligió el sistema)',
     `Guía: "${rf.guia}"`,
-    '- Transmite exactamente ese sentido con tus propias palabras, adaptadas a la conversación. No copies la guía literal.',
+    '- Transmite ese concepto con tus propias palabras, como lo dirías en esta conversación; si la persona acaba de preguntar algo, respóndele eso primero. No copies la guía literal.',
     '- No quites ni agregues información, condiciones, promesas, cifras ni preguntas. Si la guía termina en una pregunta, termina con una pregunta equivalente.',
     marcadores(rf.guia).length
       ? `- Escribe cada marcador (${[...new Set(marcadores(rf.guia))].join(', ')}) tal cual, una vez y en el lugar que tenga sentido: el sistema lo reemplaza por el dato exacto. No escribas tú esos datos.`

@@ -675,7 +675,7 @@ test('Lucía: antes de agendar presenta la propuesta y espera que quiera continu
   assert.match(sistemaDe(conv.planificarRespuesta({ ...noSigue, evaluacion: evNo })), /prefirió no avanzar por ahora/);
 });
 
-test('Lucía: fuera de cobertura pide autorización para una posible referencia, sin prometer', () => {
+test('Lucía: fuera de cobertura pide permiso para pasar los datos a un colega, sin prometer', () => {
   const ctx = ctxLucia({
     plantillas: { ...ctxBase().plantillas, fuera_cobertura: require('../config/tenants/javier-nunez/plantillas.json').find((p) => p.clave === 'fuera_cobertura').texto },
     evaluacion: { resultado: 'no_calificado', accion: 'archivar', codigo_motivo: 'cobertura_ciudad' },
@@ -683,19 +683,21 @@ test('Lucía: fuera de cobertura pide autorización para una posible referencia,
   });
   const plan = conv.planificarRespuesta(ctx);
   assert.equal(plan.respuesta_fija.plantilla, 'fuera_cobertura');
-  assert.match(plan.respuesta_fija.texto, /Javier atiende directamente propiedades en Bogotá.*¿Nos autorizas a compartir/);
+  assert.match(plan.respuesta_fija.texto, /Javier atiende directamente propiedades en Bogotá.*Si me lo permites.*colega de confianza/);
   assert.doesNotMatch(plan.respuesta_fija.texto, /se comunicará|te contactará|te llamará/, 'no promete contacto');
 
   const despues = (autoriza) => sistemaDe(conv.planificarRespuesta({
     ...ctx, estado_anterior: 'no_calificado', contacto: { ...ctx.contacto, estado: 'no_calificado', datos: { autoriza_referencia: autoriza } },
   }));
-  assert.match(despues(true), /si encuentran una opción, podrán gestionar la referencia/);
+  assert.match(despues(true), /si puede ayudarla, seguirán con la referencia/);
   assert.match(despues(false), /no se compartirán/);
-  assert.match(despues(undefined), /autoriza compartir sus datos/);
+  assert.match(despues(undefined), /si quiere y te lo permite, le pasas sus datos y los de la propiedad/);
+  assert.match(despues(undefined), /Si hizo una pregunta, respóndela primero/);
+  assert.doesNotMatch(despues(undefined), /necesita alguna aclaración/, 'una sola pregunta: la del permiso');
   for (const a of [true, false, undefined]) {
-    assert.match(despues(a), /no digas que hay un agente disponible ni que alguien la contactará/);
-    assert.match(despues(a), /necesita alguna aclaración/);
+    assert.match(despues(a), /no digas que ya pasaste sus datos ni que alguien la contactará/);
   }
+  for (const a of [true, false]) assert.match(despues(a), /necesita alguna aclaración/);
 });
 
 test('agenda: no ofrece horarios antes de las 9:00 a. m. (hora de Bogotá)', () => {
@@ -1140,7 +1142,7 @@ test('referencia por valor (< 450 M) y por barrio: plantilla e instrucción prop
   // El mínimo que ve el agente ya incluye la tolerancia del 10 % (450 M -> 405 M).
   assert.match(despues('valor_minimo'), /desde 405 millones de pesos.*No digas cifras/s);
   assert.match(despues('cobertura_barrio'), /no es una de las zonas que Javier atiende/);
-  assert.match(despues('valor_minimo'), /no digas que hay un agente disponible/);
+  assert.match(despues('valor_minimo'), /no digas que ya pasaste sus datos/);
   for (const clave of ['fuera_cobertura', 'fuera_cobertura_barrio', 'referencia_valor']) {
     assert.doesNotMatch(PLANTILLAS.find((p) => p.clave === clave).texto, /se comunicará|te contactará|hoy mismo/, `${clave} no promete contacto`);
   }
@@ -1284,4 +1286,78 @@ test('hora local: el saludo y la despedida corresponden al momento del día (4 n
   assert.match(manana, /9:05 a\. m\. \(es de mañana\)/);
   assert.doesNotMatch(manana, /buen día"\)/);
   assert.match(sistemaDe(conv.planificarRespuesta({ ...noche, ahora: '2026-11-05T20:00:00Z' })), /\(es de tarde\)/);
+});
+
+test('otra dirección con la anterior ya verificada es otra propiedad, no hereda la calificación', () => {
+  const datos = { nombre: 'Ana Ruiz', ciudad: 'Bogotá', barrio: 'Tunjuelito', direccion: 'Cra. 16a # 58-88' };
+  const base = ctxLucia({ contacto: { ...ctxLucia().contacto, estado: 'cita_confirmada', datos } });
+  const regla = /no dice claramente que está corrigiendo un error, trátalo como OTRA propiedad/;
+  assert.match(conv.solicitudExtraccion({ ...base, verificacion: { resultado: 'verificada' } }).messages[0].content, regla);
+  assert.doesNotMatch(conv.solicitudExtraccion({ ...base, verificacion: { resultado: 'imprecisa' } }).messages[0].content, regla, 'sin verificar, es una aclaración');
+});
+
+test('con cita confirmada no ofrece otra llamada y pregunta si es otra propiedad', () => {
+  const ctx = ctxLucia({
+    cita: { estado: 'confirmada', inicio: '2099-01-01T15:00:00Z', modalidad: 'llamada' },
+    evaluacion: { resultado: 'calificado', accion: 'ofrecer_agenda' },
+    contacto: { ...ctxLucia().contacto, estado: 'cita_confirmada' },
+    estado_anterior: 'cita_confirmada',
+  });
+  const sistema = sistemaDe(conv.planificarRespuesta(ctx));
+  assert.match(sistema, /ni ofrezcas otra llamada/);
+  assert.match(sistema, /si se trata de otra propiedad que quiere vender/);
+});
+
+test('propiedad que califica con llamada en otro caso: pregunta si la misma llamada o por separado', () => {
+  const agenda = require('../src/n8n/agenda');
+  const datos = {
+    ciudad: 'Bogotá', barrio: 'Chicó Norte', tipo_inmueble: 'apartamento', nombre: 'Ana Ruiz', telefono: '+573001', operacion: 'venta',
+    estado_ocupacion: 'desocupado', publicado_en_mercado: 'no', plazo_meses: 2, valor_estimado_cop: 600000000,
+    relacion_inmueble: 'propietario', otros_decisores: 'nadie', intencion_venta: true, direccion: 'Cra 9 # 69-30',
+  };
+  const ctx = ctxLucia({
+    contacto: { ...ctxLucia().contacto, datos },
+    verificacion: { resultado: 'verificada' },
+    cita_otro_caso: { inicio: '2099-01-05T15:00:00Z', modalidad: 'llamada' },
+  });
+  const ev = conv.evaluarTurno(ctx, evaluarCalificacion).evaluacion;
+  assert.equal(ev.accion, 'preguntar_misma_cita');
+  assert.match(sistemaDe(conv.planificarRespuesta({ ...ctx, evaluacion: ev })), /en esa misma llamada o trabajarlas por separado/);
+  assert.equal(agenda.planificarAgenda({ ...ctx, evaluacion: ev }, null).paso, null, 'todavía no se ofrecen horarios');
+
+  const aparte = { ...ctx, contacto: { ...ctx.contacto, datos: { ...datos, llamada_aparte: true } } };
+  assert.equal(conv.evaluarTurno(aparte, evaluarCalificacion).evaluacion.accion, 'presentar_propuesta', 'por separado: sigue su propio camino');
+  assert.equal(conv.evaluarTurno({ ...ctx, cita_otro_caso: null }, evaluarCalificacion).evaluacion.accion, 'presentar_propuesta');
+
+  const lejos = { ...ctx, contacto: { ...ctx.contacto, datos: { ...datos, plazo_meses: 6 } } };
+  assert.equal(conv.evaluarTurno(lejos, evaluarCalificacion).evaluacion.accion, 'nutrir', 'sin cumplir el plazo no se habla de llamadas');
+});
+
+test('barrio fuera del listado: cumple lo demás pero queda en revisión, sin llamada', () => {
+  const agenda = require('../src/n8n/agenda');
+  const { resolverBarrio } = require('../src/cobertura/barrios');
+  const datos = {
+    ciudad: 'Bogotá', barrio: 'Tunjuelito', tipo_inmueble: 'apartamento', nombre: 'Ana Ruiz', telefono: '+573001', operacion: 'venta',
+    estado_ocupacion: 'desocupado', publicado_en_mercado: 'no', plazo_meses: 2, valor_estimado_cop: 600000000,
+    relacion_inmueble: 'propietario', otros_decisores: 'nadie', intencion_venta: true, direccion: 'Cra 16a # 58-88',
+  };
+  const fila = (barrio, atiende) => ({ localidad: 'L', codigo_upz: 1, upz: 'U', barrio, alias: [], atiende });
+  const ctx = ctxLucia({
+    contacto: { ...ctxLucia().contacto, datos },
+    verificacion: { resultado: 'verificada' },
+    barrios_cobertura: [fila('Chicó Norte', true)],
+    cita_otro_caso: { inicio: '2099-01-05T15:00:00Z', modalidad: 'llamada' },
+  });
+  const { evaluacion: ev } = conv.evaluarTurno(ctx, evaluarCalificacion, resolverBarrio);
+  assert.equal(ev.accion, 'revision_zona');
+  assert.equal(ev.resultado, 'informacion_incompleta', 'no queda pendiente de agendar');
+  assert.equal(agenda.planificarAgenda({ ...ctx, evaluacion: ev }, null).paso, null);
+  assert.match(sistemaDe(conv.planificarRespuesta({ ...ctx, evaluacion: ev })), /debe confirmar si atiende ese sector/);
+
+  // Javier lo agrega como atendido en la hoja: se reevalúa y sigue su camino normal.
+  const confirmado = { ...ctx, cita_otro_caso: null, barrios_cobertura: [fila('Tunjuelito', true)] };
+  assert.equal(conv.evaluarTurno(confirmado, evaluarCalificacion, resolverBarrio).evaluacion.accion, 'presentar_propuesta');
+  // Marcado como no atendido sigue siendo una referencia, no una revisión.
+  const noAtendido = { ...ctx, barrios_cobertura: [fila('Tunjuelito', false)] };
+  assert.equal(conv.evaluarTurno(noAtendido, evaluarCalificacion, resolverBarrio).evaluacion.resultado, 'no_calificado');
 });

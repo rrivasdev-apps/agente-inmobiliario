@@ -27,6 +27,7 @@
     {"clave": "autoriza_referencia", "etiqueta": "Autoriza compartir sus datos para una referencia", "tipo": "booleano", "descripcion": "Solo si se le preguntó por una posible referencia a un agente de otra zona: true si autoriza compartir sus datos de contacto y de la propiedad; false si no"},
     {"clave": "dudas_propuesta", "etiqueta": "Dudas sobre la propuesta", "tipo": "texto", "descripcion": "Dudas que expresó sobre la forma de trabajo, la exclusividad, la comisión o el acuerdo, resumidas en una frase que incluya las anteriores"},
     {"clave": "solicita_acuerdo", "etiqueta": "Pidió el borrador del acuerdo", "tipo": "booleano", "descripcion": "true si pidió ver el borrador del acuerdo o del contrato"},
+    {"clave": "llamada_aparte", "etiqueta": "Prefiere otra llamada para esta propiedad", "tipo": "booleano", "descripcion": "Solo si se le preguntó si quiere ver esta propiedad en la llamada que ya tiene agendada o por separado: true si la prefiere por separado"},
     {"clave": "desea_continuar", "etiqueta": "Quiere avanzar con Javier", "tipo": "booleano", "descripcion": "Solo después de que se le explicó cómo trabaja Javier: true si dice que quiere continuar o agendar; false si dice que no quiere avanzar por ahora. Una duda no es un no."}
   ],
   "criterios": {
