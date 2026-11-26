@@ -1,6 +1,6 @@
 # Parámetros de configuración por tenant
 
-Todo umbral de negocio vive en `config/tenants/<tenant>/tenant.json` → `parametros`. `npm run seed` lo copia a `app.tenants.parametros`, y el evaluador lo lee en cada turno. Cambiar un valor no requiere tocar código: editar, regenerar el seed y aplicarlo.
+Todo umbral de negocio vive en `app.tenants.parametros` (Supabase), y el evaluador lo lee en cada turno. **Desde el 26 nov 2026 se cambia en el [panel de configuración](panel.md)**, que deja historial de cada cambio. `config/tenants/<tenant>/tenant.json` → `parametros` son los valores iniciales: `npm run seed` crea el tenant con ellos y luego solo agrega claves nuevas; nunca pisa un valor guardado en Supabase (migración 0020).
 
 | Parámetro | Valor actual | Efecto |
 |---|---|---|
