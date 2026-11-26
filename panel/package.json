@@ -1,0 +1,30 @@
+{
+  "name": "panel-agente",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Panel web para que la persona autorizada configure el agente (Lucía y Sonia)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "NODE_OPTIONS=--max-http-header-size=65536 next dev --port 3100",
+    "build": "next build",
+    "start": "next start --port 3100",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types 'lib/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.119.2",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.4",
+    "@types/react": "^19.3.3",
+    "typescript": "^5.9.3"
+  }
+}

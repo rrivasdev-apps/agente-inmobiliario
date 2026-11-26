@@ -58,9 +58,11 @@ function generarTenant(dir) {
   const tid = `(select id from app.tenants where slug = ${lit(t.slug)})`;
 
   sql.push(`-- Tenant: ${t.nombre}`);
+  // Los parámetros los administra el panel en Supabase: el seed solo agrega las
+  // claves nuevas de tenant.json y nunca pisa un valor ya guardado (migración 0020).
   const parametros = t.parametros || {};
   sql.push(`insert into app.tenants (slug, nombre, zona_horaria, mercado, parametros) values (${lit(t.slug)}, ${lit(t.nombre)}, ${lit(t.zona_horaria)}, ${lit(t.mercado)}, ${json(parametros)})`
-    + ' on conflict (slug) do update set nombre = excluded.nombre, zona_horaria = excluded.zona_horaria, mercado = excluded.mercado, parametros = excluded.parametros;');
+    + ' on conflict (slug) do update set nombre = excluded.nombre, zona_horaria = excluded.zona_horaria, mercado = excluded.mercado, parametros = app.fusionar_jsonb(excluded.parametros, app.tenants.parametros);');
 
   // Ciudades atendidas: solo se siembran. La tabla se administra en Supabase
   // (agregar, desactivar) y el seed no pisa esos cambios.

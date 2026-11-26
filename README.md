@@ -24,6 +24,7 @@ n8n/agente-inmobiliario.json  Flujo de n8n, GENERADO desde src/ y prompts/
 supabase/migrations/          Esquema de base de datos
 supabase/seed.sql             GENERADO desde config/ y prompts/
 tests/                        Pruebas del evaluador y de la base de datos
+panel/                        Panel web (Next.js) donde la persona autorizada configura el agente
 docs/                         Arquitectura y plan de implementación
 entregables/                  Archivos para Javier y sus respuestas (validaciones, plantillas de Meta, guion)
 ```
@@ -57,7 +58,7 @@ Para `test:db` en Mac (el script busca PostgreSQL en la ruta de Linux, así que 
 ```bash
 brew install postgresql@16
 export PATH="$(brew --prefix postgresql@16)/bin:$PATH"
-PG_BIN="$(brew --prefix postgresql@16)/bin" npm run test:db
+PG_BIN="$(brew --prefix postgresql@16)/bin" LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 npm run test:db
 ```
 
 Las credenciales no están en el repositorio: viven en n8n (Credentials) y en Supabase Vault. Publicar cambios en Supabase y n8n está descrito en [docs/n8n.md](docs/n8n.md#publicar-cambios).
@@ -70,3 +71,4 @@ Las credenciales no están en el repositorio: viven en n8n (Credentials) y en Su
 - [Flujo de n8n y configuración](docs/n8n.md)
 - [Parámetros por tenant y calificación](docs/configuracion.md)
 - [Cobertura por barrio](docs/cobertura.md)
+- [Panel de configuración](docs/panel.md)

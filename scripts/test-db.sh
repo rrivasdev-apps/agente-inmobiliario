@@ -14,8 +14,8 @@ trap limpiar EXIT
 como=()
 if [ "$(id -u)" = "0" ]; then chown -R postgres "$datos"; como=(runuser -u postgres --); fi
 
-"${como[@]}" "$bin/initdb" -D "$datos" -U postgres -A trust >/dev/null
-"${como[@]}" "$bin/pg_ctl" -D "$datos" -o "-p $puerto -k $datos -c listen_addresses=''" -w start >/dev/null
+${como[@]+"${como[@]}"} "$bin/initdb" -D "$datos" -U postgres -A trust >/dev/null
+${como[@]+"${como[@]}"} "$bin/pg_ctl" -D "$datos" -o "-p $puerto -k $datos -c listen_addresses=''" -w start >/dev/null
 
 psql_() { psql -h "$datos" -p "$puerto" -U postgres -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
 
