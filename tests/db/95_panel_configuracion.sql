@@ -71,7 +71,25 @@ do $$ begin
   raise exception 'Falló: un usuario escribió el historial directamente';
 exception when insufficient_privilege then null;
 end $$;
+
+-- Ciudades (migración 0021): el admin las ve y las administra desde el panel.
+select pg_temp.esperar((select count(*) from app.ciudades_cobertura where ciudad = 'Bogotá') = 1, 'el admin ve las ciudades');
+insert into app.ciudades_cobertura (tenant_id, ciudad) select t, 'Chía' from pc_t;
+update app.ciudades_cobertura set activa = false where ciudad = 'Chía';
+select pg_temp.esperar((select not activa from app.ciudades_cobertura where ciudad = 'Chía'), 'el admin desactiva una ciudad');
+delete from app.ciudades_cobertura where ciudad = 'Chía';
+
+-- Un asesor ve las ciudades pero RLS no le deja cambiarlas.
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000a2';
+select pg_temp.esperar((select count(*) from app.ciudades_cobertura) >= 1, 'el asesor ve las ciudades');
+update app.ciudades_cobertura set activa = false where ciudad = 'Bogotá';
+do $$ begin
+  insert into app.ciudades_cobertura (tenant_id, ciudad) select t, 'Cota' from pc_t;
+  raise exception 'Falló: un asesor agregó una ciudad';
+exception when insufficient_privilege then null;
+end $$;
 reset role;
+select pg_temp.esperar((select activa from app.ciudades_cobertura where ciudad = 'Bogotá'), 'RLS impide que un asesor desactive ciudades');
 reset request.jwt.claim.sub;
 
 -- Volver a aplicar el seed no pisa lo que se cambió en el panel.

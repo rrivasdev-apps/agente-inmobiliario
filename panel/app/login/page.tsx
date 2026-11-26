@@ -12,7 +12,7 @@ function FormularioLogin() {
   if (estado.enviado) {
     return (
       <p className="aviso ok">
-        Si tu correo está autorizado, te llegó un enlace para entrar. Ábrelo en este mismo navegador.
+        Si tu correo está autorizado, te llegó un enlace para entrar. Vale por una hora. Si no lo ves, revisa Spam.
       </p>
     );
   }

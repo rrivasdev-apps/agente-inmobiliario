@@ -12,13 +12,14 @@ export default async function PaginaHistorial({ params }: { params: Promise<{ sl
   const { slug } = await params;
   const { supabase, tenant, usuario } = await cargarTenant(slug);
 
-  const { data: cambios } = await supabase
+  const { data: cambios, error } = await supabase
     .from('cambios_configuracion')
     .select('id, user_id, ruta, valor_anterior, valor_nuevo, creado_en')
     .eq('tenant_id', tenant.id)
     .order('creado_en', { ascending: false })
     .limit(100)
     .returns<Cambio[]>();
+  if (error) throw new Error(`No se pudo leer el historial: ${error.message}`);
 
   const fecha = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short', timeZone: tenant.zona_horaria });
 

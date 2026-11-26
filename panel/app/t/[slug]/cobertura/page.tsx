@@ -29,8 +29,9 @@ export default async function PaginaCobertura({ params, searchParams }: {
   const { q = '', atiende = '', aviso } = await searchParams;
   const { supabase, tenant, esAdmin } = await cargarTenant(slug);
 
-  const { data: ciudades } = await supabase
+  const { data: ciudades, error: errorCiudades } = await supabase
     .from('ciudades_cobertura').select('id, ciudad, activa').eq('tenant_id', tenant.id).order('ciudad');
+  if (errorCiudades) throw new Error(`No se pudieron leer las ciudades: ${errorCiudades.message}`);
 
   let consulta = supabase
     .from('barrios_cobertura')
@@ -44,7 +45,8 @@ export default async function PaginaCobertura({ params, searchParams }: {
   if (atiende === 'si') consulta = consulta.eq('atiende', true);
   if (atiende === 'no') consulta = consulta.eq('atiende', false);
   if (atiende === 'sin') consulta = consulta.is('atiende', null);
-  const { data: barrios, count } = await consulta.returns<Barrio[]>();
+  const { data: barrios, count, error: errorBarrios } = await consulta.returns<Barrio[]>();
+  if (errorBarrios) throw new Error(`No se pudieron leer los barrios: ${errorBarrios.message}`);
 
   const mensaje = aviso ? AVISOS[aviso] : undefined;
 
@@ -98,7 +100,7 @@ export default async function PaginaCobertura({ params, searchParams }: {
           {(q || atiende) && <Link href={`/t/${slug}/cobertura`}>Limpiar</Link>}
         </form>
         <p style={{ color: 'var(--suave)', fontSize: 13 }}>
-          {count ?? 0} barrios{(count ?? 0) > 200 ? ' (se muestran los primeros 200; usa la búsqueda)' : ''}
+          {count ?? 0} {count === 1 ? 'barrio' : 'barrios'}{(count ?? 0) > 200 ? ' (se muestran los primeros 200; usa la búsqueda)' : ''}
         </p>
         <div className="tabla-desplazable">
           <table>

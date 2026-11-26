@@ -25,20 +25,30 @@ Fuera de la v1: agenda de llamadas (ventanas, festivos, vacaciones), plantillas 
 
 Las rutas son por tenant (`/t/<slug>/…`), los permisos salen de la membresía y el catálogo solo muestra los campos que existen en los parámetros de cada tenant. Agregar un cliente nuevo no requiere tocar el panel: crear el tenant (seed) y darle membresía a su administrador.
 
-## Puesta en marcha (pendiente)
+## Puesta en marcha
 
-1. **Aplicar la migración 0020 y el seed** en Supabase (como las demás, ver [n8n.md](n8n.md#publicar-cambios)).
-2. **Exponer el esquema `app`** en Supabase → Project Settings → Data API → Exposed schemas: agregar `app`.
-3. **Crear el usuario de Javier** en Supabase → Authentication → Users → *Invite user* (su correo) y darle membresía:
+Hecho en `db_inmuebles` el 26 nov 2026:
+
+- Migraciones 0020 y 0021 y el seed aplicados (0021 da a `authenticated` los permisos sobre `ciudades_cobertura` y `usuarios`, que 0009 no había dado).
+- Esquema `app` expuesto en Data API → Exposed schemas.
+- Correo por Resend (Authentication → Emails → SMTP), límite de 30 correos por hora.
+- Plantillas de *Magic link* e *Invite* en español con `token_hash`: el enlace lleva a `/auth/confirm`, que no inicia sesión al abrirse (los revisores de enlaces del correo lo gastarían) sino al pulsar **Entrar**, y funciona en cualquier navegador.
+  - Magic link: `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email`
+  - Invite: `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite`
+- Usuario de Rafael con `admin_plataforma`. Redirect URL permitida: `http://localhost:3100/auth/confirm`.
+
+Pendiente:
+
+1. **Desplegar** `panel/` en Vercel (Root Directory: `panel`) con las variables de `panel/.env.example`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (clave pública, nunca la secreta) y `NEXT_PUBLIC_SITE_URL`.
+2. **URLs de Auth:** *Site URL* = URL del panel (la usa la invitación) y agregar `<URL del panel>/auth/confirm` a *Redirect URLs*.
+3. **Invitar a Javier** (Authentication → Users → *Invite user*) y darle membresía:
    ```sql
    insert into app.miembros_tenant (tenant_id, user_id, rol)
    select t.id, u.id, 'admin_operacion'
    from app.tenants t, auth.users u
    where t.slug = 'javier-nunez' and u.email = '<correo de Javier>';
    ```
-   Para Rafael, `admin_plataforma`.
-4. **URLs de Auth:** Authentication → URL Configuration: *Site URL* = URL del panel; *Redirect URLs* = `<URL del panel>/auth/confirm` (y `http://localhost:3100/auth/confirm` para trabajar en local).
-5. **Desplegar** `panel/` en Vercel (Root Directory: `panel`) con las variables de `panel/.env.example`: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (clave anon/publishable, nunca la service_role) y `NEXT_PUBLIC_SITE_URL`.
+4. Recomendado: desactivar el registro público (Authentication → Sign In / Providers → *Allow new users to sign up*); las invitaciones siguen funcionando.
 
 ## Trabajar en local
 
@@ -46,7 +56,8 @@ Las rutas son por tenant (`/t/<slug>/…`), los permisos salen de la membresía 
 cd panel
 npm install
 cp .env.example .env.local   # completar con la URL y la clave pública de Supabase
-npm run dev                  # http://localhost:3100
+npm run dev                  # http://localhost:3100 (acepta cabeceras de 64 KB: las cookies de
+                             # otras apps en localhost causaban HTTP 431)
 npm test                     # catálogo y validaciones
 npm run typecheck
 ```

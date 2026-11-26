@@ -25,10 +25,14 @@ export async function enviarEnlace(_previo: EstadoLogin, formulario: FormData): 
     },
   });
 
-  // El límite de envíos sí se informa; cualquier otro error (p. ej. correo no
-  // registrado) se responde igual que un envío, para no revelar quién tiene cuenta.
+  // El límite y las fallas del servidor de correo sí se informan; un correo no
+  // registrado (error 4xx) se responde igual que un envío, para no revelar quién tiene cuenta.
   if (error?.status === 429) {
     return { enviado: false, error: 'Se pidieron demasiados enlaces. Espera unos minutos e intenta de nuevo.' };
+  }
+  if (error && (error.status ?? 500) >= 500) {
+    console.error('No se pudo enviar el enlace de acceso:', error.message);
+    return { enviado: false, error: 'No pudimos enviar el correo en este momento. Intenta de nuevo más tarde.' };
   }
   return { enviado: true };
 }
