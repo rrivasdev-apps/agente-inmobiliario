@@ -1,4 +1,5 @@
 -- Reproduce lo mínimo de Supabase para probar la migración en Postgres puro.
+create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin bypassrls;
 create schema auth;
