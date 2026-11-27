@@ -536,9 +536,11 @@ const flujoReporte = {
 };
 
 // --- Flujo 3: sincronizar barrios atendidos desde la hoja de Google ---------------------------
-// Cada 15 minutos lee la hoja que edita el equipo (config/tenants/<t>/tenant.json →
-// hoja_barrios) y actualiza app.barrios_cobertura (docs/cobertura.md). Si la hoja llega
-// vacía o incompleta, app.sincronizar_barrios lo rechaza y la ejecución queda en error.
+// Una vez al día (y cuando un admin lo pide desde el panel) lee la hoja que edita el
+// equipo (config/tenants/<t>/tenant.json → hoja_barrios) y actualiza app.barrios_cobertura
+// (docs/cobertura.md). Antes era cada 15 minutos y agotaba el cupo de ejecuciones de n8n
+// Cloud (27 nov 2026). Si la hoja llega vacía o incompleta, app.sincronizar_barrios lo
+// rechaza y la ejecución queda en error.
 
 nodos.length = 0;
 for (const k of Object.keys(conexiones)) delete conexiones[k];
@@ -547,10 +549,24 @@ secuencia = 200;
 const tenantBarrios = JSON.parse(leer('config', 'tenants', 'javier-nunez', 'tenant.json'));
 const hoja = tenantBarrios.hoja_barrios;
 
-nodo('Cada 15 minutos', 'n8n-nodes-base.scheduleTrigger', 1.2, [x(0), 0], {
-  rule: { interval: [{ field: 'minutes', minutesInterval: 15 }] },
+nodo('Cada día 6:00', 'n8n-nodes-base.scheduleTrigger', 1.2, [x(0), 0], {
+  rule: { interval: [{ field: 'days', daysInterval: 1, triggerAtHour: 6, triggerAtMinute: 0 }] },
 });
 nodo('Ejecutar ahora', 'n8n-nodes-base.manualTrigger', 1, [x(0), 200], {});
+// Pedido del panel: lo envía la BD (app.solicitar_sincronizacion_barrios, migración 0023)
+// con el token de Vault en X-Token. Responde enseguida; la sincronización sigue después.
+nodo('Pedido del panel', 'n8n-nodes-base.webhook', 2, [x(0), -300], {
+  httpMethod: 'POST', path: 'agente-inmobiliario/barrios', responseMode: 'onReceived', options: {},
+}, { webhookId: 'b7c4e2a0-6f1d-4c3e-9a51-2d8f0e6b1c03' });
+nodo('Preparar token del panel', 'n8n-nodes-base.set', 3.4, [x(1), -300], {
+  mode: 'manual',
+  assignments: { assignments: [{ id: 'token', name: 'token_b64', type: 'string',
+    value: "={{ JSON.stringify(String(($json.headers || {})['x-token'] || '')).base64Encode() }}" }] },
+  options: {},
+});
+postgres('Validar token del panel', [x(2), -300],
+  "select app.verificar_token_barrios(convert_from(decode('{{ $json.token_b64 }}', 'base64'), 'UTF8')::jsonb #>> '{}') as valido");
+si('¿Pedido válido?', [x(3), -300], '$json.valido === true');
 // Un rango sin nombre de pestaña ("A:Z") lee la primera pestaña: no depende de su
 // id ni de su nombre, que el equipo puede cambiar.
 nodo('Leer hoja de barrios', 'n8n-nodes-base.httpRequest', 4.2, [x(1), 100], {
@@ -572,8 +588,12 @@ return [{ json: { filas_b64: b64(r.filas), advertencias_b64: b64(r.advertencias)
 postgres('Sincronizar en Supabase', [x(3), 100],
   `select app.sincronizar_barrios('${tenantBarrios.slug}', ${jsonb('filas_b64')}, ${jsonb('advertencias_b64')}) as r`);
 
-conectar('Cada 15 minutos', 'Leer hoja de barrios');
+conectar('Cada día 6:00', 'Leer hoja de barrios');
 conectar('Ejecutar ahora', 'Leer hoja de barrios');
+conectar('Pedido del panel', 'Preparar token del panel');
+conectar('Preparar token del panel', 'Validar token del panel');
+conectar('Validar token del panel', '¿Pedido válido?');
+conectar('¿Pedido válido?', 'Leer hoja de barrios', 0);
 conectar('Leer hoja de barrios', 'Preparar filas');
 conectar('Preparar filas', 'Sincronizar en Supabase');
 

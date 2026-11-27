@@ -15,7 +15,7 @@ Con la ciudad atendida y el barrio dado, `app.contexto_conversacion` trae las fi
 ## Cómo se actualiza
 
 ```
-Hoja "Barrios cobertura — JNdelT" ──(n8n cada 15 min)──▶ app.sincronizar_barrios ──▶ app.barrios_cobertura
+Hoja "Barrios cobertura — JNdelT" ──(n8n a diario 6:00 y a pedido del panel)──▶ app.sincronizar_barrios ──▶ app.barrios_cobertura
 ```
 
 - Hoja: https://docs.google.com/spreadsheets/d/1KMHWZz4TyT9iEcCxHsv_JAEjMcCOwN5i6k1xyYgrxxU (id en `config/tenants/javier-nunez/tenant.json` → `hoja_barrios`). El flujo lee siempre la **primera pestaña** con la API de Sheets (rango `A:Z`), sin importar su nombre; los encabezados deben quedar en la fila 1.

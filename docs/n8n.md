@@ -113,7 +113,7 @@ Antes de enviar cada respuesta, el nodo **Simular escritura** espera `espera_s` 
 
 ## Sincronizar barrios atendidos
 
-Flujo **Agente inmobiliario: sincronizar barrios atendidos** (id `IoRRrBoydHaPnWxs`, `n8n/sincronizar-barrios.json`), **activo**. Cada 15 minutos lee la hoja de barrios (`tenant.json` → `hoja_barrios`), la prepara con `src/cobertura/barrios.js` y llama a `app.sincronizar_barrios`. Ver [cobertura.md](cobertura.md).
+Flujo **Agente inmobiliario: sincronizar barrios atendidos** (id `IoRRrBoydHaPnWxs`, `n8n/sincronizar-barrios.json`), **activo**. Lee la hoja de barrios (`tenant.json` → `hoja_barrios`) una vez al día a las 6:00 a. m. y cuando un admin pulsa «Sincronizar ahora» en el panel (webhook `agente-inmobiliario/barrios`, que solo acepta el token de Vault `n8n_barrios_token`; migración 0023). Antes corría cada 15 minutos y agotó el cupo de ejecuciones de n8n Cloud el 25 nov 2026. La prepara con `src/cobertura/barrios.js` y llama a `app.sincronizar_barrios`. Ver [cobertura.md](cobertura.md).
 
 ## Publicar cambios
 
