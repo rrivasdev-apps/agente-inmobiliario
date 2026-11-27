@@ -968,12 +968,32 @@ test('barrios: lee la hoja configurada y llama a app.sincronizar_barrios', () =>
   const { hoja_barrios } = require('../config/tenants/javier-nunez/tenant.json');
   assert.equal(hoja.parameters.url, `https://sheets.googleapis.com/v4/spreadsheets/${hoja_barrios.spreadsheet_id}/values/A:Z`);
   assert.equal(hoja.parameters.nodeCredentialType, 'googleSheetsOAuth2Api');
-  const pg = flujoBarrios.nodes.find((n) => n.type === 'n8n-nodes-base.postgres');
+  const pg = flujoBarrios.nodes.find((n) => n.name === 'Sincronizar en Supabase');
   assert.match(pg.parameters.query, /app\.sincronizar_barrios\('javier-nunez', convert_from\(decode\('\{\{ \$json\.filas_b64 \}\}'/);
   const destinos = Object.values(flujoBarrios.connections).flatMap((c) => c.main.flat().map((d) => d.node));
   for (const n of flujoBarrios.nodes) {
-    if (!n.type.endsWith('Trigger')) assert.ok(destinos.includes(n.name), `nodo huérfano: ${n.name}`);
+    if (!n.type.endsWith('Trigger') && n.type !== 'n8n-nodes-base.webhook') assert.ok(destinos.includes(n.name), `nodo huérfano: ${n.name}`);
   }
+});
+
+test('barrios: una vez al día y a pedido del panel, solo con el token de Vault (27 nov 2026)', () => {
+  const nodo = (nombre) => flujoBarrios.nodes.find((n) => n.name === nombre);
+  const sig = (nombre, salida = 0) => flujoBarrios.connections[nombre].main[salida].map((d) => d.node);
+  assert.deepEqual(nodo('Cada día 6:00').parameters.rule.interval, [{ field: 'days', daysInterval: 1, triggerAtHour: 6, triggerAtMinute: 0 }]);
+  assert.ok(!flujoBarrios.nodes.some((n) => n.name === 'Cada 15 minutos'), 'ya no corre cada 15 minutos');
+
+  const webhook = nodo('Pedido del panel');
+  assert.equal(webhook.parameters.path, 'agente-inmobiliario/barrios');
+  assert.equal(webhook.parameters.httpMethod, 'POST');
+  assert.deepEqual(sig('Pedido del panel'), ['Preparar token del panel']);
+  assert.match(nodo('Validar token del panel').parameters.query, /app\.verificar_token_barrios\(/);
+  assert.deepEqual(sig('¿Pedido válido?', 0), ['Leer hoja de barrios'], 'con token válido, sincroniza');
+  assert.equal((flujoBarrios.connections['¿Pedido válido?'].main[1] || []).length, 0, 'sin token, no hace nada');
+
+  // La migración que envía el pedido usa la misma ruta.
+  const sql = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'supabase', 'migrations', '0023_sincronizar_barrios_a_pedido.sql'), 'utf8');
+  assert.ok(sql.includes(`/webhook/${webhook.parameters.path}'`));
+  assert.match(sql, /if not app\.es_admin_de\(p_tenant\)/);
 });
 
 test('barrios: el nodo Code prepara las 447 filas de la hoja de hoy', async () => {

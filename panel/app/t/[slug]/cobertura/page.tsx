@@ -1,12 +1,15 @@
 import Link from 'next/link';
 import { cargarTenant, normalizarTexto } from '@/lib/tenant';
-import { agregarCiudad, cambiarCiudad } from './actions';
+import { agregarCiudad, cambiarCiudad, sincronizarBarrios } from './actions';
 
 const AVISOS: Record<string, { tipo: 'ok' | 'mal'; texto: string }> = {
   ciudad_agregada: { tipo: 'ok', texto: 'Ciudad agregada. El agente la atiende desde el próximo mensaje.' },
   ciudad_activada: { tipo: 'ok', texto: 'Ciudad activada.' },
   ciudad_desactivada: { tipo: 'ok', texto: 'Ciudad desactivada: el agente ya no la atiende directamente.' },
   ciudad_invalida: { tipo: 'mal', texto: 'Escribe el nombre de la ciudad.' },
+  sincronizacion_pedida: { tipo: 'ok', texto: 'Sincronización pedida. En un minuto recarga la página para ver los barrios actualizados.' },
+  sincronizacion_reciente: { tipo: 'mal', texto: 'Ya se pidió una sincronización hace menos de 2 minutos. Espera un momento y recarga la página.' },
+  sincronizacion_sin_configurar: { tipo: 'mal', texto: 'La sincronización a pedido no está configurada todavía.' },
   error: { tipo: 'mal', texto: 'No se pudo guardar el cambio.' },
 };
 
@@ -16,6 +19,11 @@ const FILTROS = [
   { valor: 'no', titulo: 'Se refieren' },
   { valor: 'sin', titulo: 'Sin definir' },
 ];
+
+interface EstadoSincronizacion {
+  ultima: { fecha: string; mensaje: string } | null;
+  pedida: string | null;
+}
 
 interface Barrio {
   id: string; localidad: string; upz: string | null; barrio: string; atiende: boolean | null; notas: string | null;
@@ -47,6 +55,10 @@ export default async function PaginaCobertura({ params, searchParams }: {
   if (atiende === 'sin') consulta = consulta.is('atiende', null);
   const { data: barrios, count, error: errorBarrios } = await consulta.returns<Barrio[]>();
   if (errorBarrios) throw new Error(`No se pudieron leer los barrios: ${errorBarrios.message}`);
+
+  const { data: datosEstado } = await supabase.rpc('estado_sincronizacion_barrios', { p_tenant: tenant.id });
+  const estado = datosEstado as EstadoSincronizacion | null;
+  const fechaHora = new Intl.DateTimeFormat('es-CO', { timeZone: tenant.zona_horaria, dateStyle: 'medium', timeStyle: 'short' });
 
   const mensaje = aviso ? AVISOS[aviso] : undefined;
 
@@ -88,9 +100,21 @@ export default async function PaginaCobertura({ params, searchParams }: {
       <section className="tarjeta">
         <h2>Barrios</h2>
         <p>
-          Se editan en la hoja de Google de barrios del equipo (columna «¿Lo atiendo?»); el agente la sincroniza cada 15 minutos.
-          Aquí se consultan.
+          Se editan en la hoja de Google de barrios del equipo (columna «¿Lo atiendo?»); el agente la sincroniza una vez al día,
+          a las 6:00 a. m. Aquí se consultan.
         </p>
+        <div className="fila-form" style={{ marginBottom: 12, alignItems: 'center' }}>
+          <p style={{ margin: 0, color: 'var(--suave)', fontSize: 13 }}>
+            {estado?.ultima
+              ? `Última sincronización: ${fechaHora.format(new Date(estado.ultima.fecha))}. ${estado.ultima.mensaje}.`
+              : 'Aún no hay sincronizaciones registradas.'}
+          </p>
+          {esAdmin && (
+            <form action={sincronizarBarrios.bind(null, slug)}>
+              <button type="submit">Sincronizar ahora</button>
+            </form>
+          )}
+        </div>
         <form className="fila-form" style={{ marginBottom: 12 }}>
           <input type="text" name="q" defaultValue={q} aria-label="Buscar barrio" placeholder="Buscar barrio" />
           <select name="atiende" defaultValue={atiende} aria-label="Filtrar" style={{ width: 'auto' }}>

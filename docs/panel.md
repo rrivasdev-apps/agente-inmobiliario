@@ -9,7 +9,7 @@ Código en `panel/` (Next.js 16 + Supabase Auth). Migración `0020_panel_configu
 | Página | Qué hace |
 |---|---|
 | **Parámetros** | Valor mínimo, tolerancia y premium; relaciones válidas y tipos de inmueble; prioridad y recordatorio; mínimos de compra y arriendo; propuesta comercial; dossier; nutrición; conversación; reporte semanal. El catálogo está en `panel/lib/parametros.ts`: cada campo tiene su etiqueta, ayuda y validación. |
-| **Cobertura** | Agregar, activar y desactivar ciudades (`app.ciudades_cobertura`). Consultar barrios: se siguen editando en la hoja de Google, que se sincroniza cada 15 min y pisaría cualquier cambio hecho en el panel. |
+| **Cobertura** | Agregar, activar y desactivar ciudades (`app.ciudades_cobertura`). Consultar barrios: se siguen editando en la hoja de Google, que se sincroniza a diario y con el botón «Sincronizar ahora» (migración 0023), y pisaría cualquier cambio hecho en el panel. |
 | **Historial** | Los últimos 100 cambios de parámetros: qué, antes, después, cuándo y quién. |
 
 Fuera de la v1: agenda de llamadas (ventanas, festivos, vacaciones), plantillas y prompts, usuarios del reporte.
